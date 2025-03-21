@@ -1,5 +1,13 @@
 import tkinter as tk
 from tkinter import messagebox
+import subprocess
+import time
+import threading
+from PIL import ImageGrab
+import GPUtil
+
+
+
 
 
 class App:
@@ -12,6 +20,7 @@ class App:
             self.root.iconbitmap("images/mta.ico")
         except tk.TclError:
             print("Картинка не найдена.")
+
 
         # Инициализация переменных для чекбоксов
         self.aida_var = tk.BooleanVar()
@@ -70,6 +79,27 @@ class App:
         except ValueError:
             messagebox.showerror("Неверно введены кол-во часов.", "Пожалуйста, введите правильное число.")
             return
+
+        gpu_enabled = self.check_gpu()
+
+        if self.aida_var.get():
+            self.manager.add_tester(AidaBusinessTester("AidaBusiness", gpu_enabled))
+        if self.furmark_var.get():
+            self.manager.add_tester(FurmarkTester("Furmark"))
+        if self.fio_var.get():
+            self.manager.add_tester(FioTester("Fio"))
+        if self.crystal_var.get():
+            self.manager.add_tester(CrystalDiskInfoTester("CrystalDiskInfo"))
+
+        self.manager.start_all()
+
+    def stop_tests(self):
+        if messagebox.askokcancel("Предупреждение", "Вы действительно хотите принудительно остановить тестирование?"):
+            self.manager.stop_all()
+
+    def check_gpu(self):
+        gpus = GPUtil.getGPUs()
+        return len(gpus) > 0
 
 
 if __name__ == "__main__":
