@@ -1,9 +1,10 @@
 import threading
 
+
 class TestManager:
     def __init__(self):
         self.testers = []
-        self.test_time = 12 * 60 * 60  # 12 часов по умолчанию
+        self.test_time = 12 * 60 * 60
 
     def add_tester(self, tester):
         self.testers.append(tester)

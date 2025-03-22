@@ -1,6 +1,7 @@
 import subprocess
 from PIL import ImageGrab
 
+
 class BaseTester:
     def __init__(self, name):
         self.name = name
@@ -18,6 +19,7 @@ class BaseTester:
         screenshot = ImageGrab.grab()
         screenshot.save(filename)
 
+
 class AidaBusinessTester(BaseTester):
     def __init__(self, name, gpu_enabled):
         super().__init__(name)
@@ -29,13 +31,16 @@ class AidaBusinessTester(BaseTester):
             command.append("--stress-gpu")
         self.process = subprocess.Popen(command)
 
+
 class FurmarkTester(BaseTester):
     def start(self):
         self.process = subprocess.Popen(["furmark.exe"])
 
+
 class FioTester(BaseTester):
     def start(self):
         self.process = subprocess.Popen(["fio", "--filename=test.fio", "--size=1G", "--rw=write"])
+
 
 class CrystalDiskInfoTester(BaseTester):
     def start(self):
