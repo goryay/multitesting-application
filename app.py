@@ -4,13 +4,13 @@ from test_manager import TestManager
 from testers import AidaBusinessTester, FurmarkTester, FioTester, CrystalDiskInfoTester
 import GPUtil
 
+
 class App:
     def __init__(self, root):
         self.root = root
         self.root.title("MWR")
         self.root.geometry("300x300")
 
-        # Установите иконку, если файл существует
         try:
             self.root.iconbitmap("images/mta.ico")
         except tk.TclError:
@@ -42,10 +42,15 @@ class App:
         self.update_start_button()
 
     def create_widgets(self):
-        tk.Checkbutton(self.root, text="Aida Business", variable=self.aida_var, width=20, anchor="w").pack(fill="both", padx=5, pady=2)
-        tk.Checkbutton(self.root, text="Furmark", variable=self.furmark_var, width=20, anchor="w").pack(fill="both", padx=5, pady=2)
-        tk.Checkbutton(self.root, text="Fio", variable=self.fio_var, width=20, anchor="w").pack(fill="both", padx=5, pady=2)
-        tk.Checkbutton(self.root, text="CrystalDiskInfo", variable=self.crystal_var, width=20, anchor="w").pack(fill="both", padx=5, pady=2)
+        tk.Checkbutton(self.root, text="Aida Business", variable=self.aida_var, width=20, anchor="w").pack(fill="both",
+                                                                                                           padx=5,
+                                                                                                           pady=2)
+        tk.Checkbutton(self.root, text="Furmark", variable=self.furmark_var, width=20, anchor="w").pack(fill="both",
+                                                                                                        padx=5, pady=2)
+        tk.Checkbutton(self.root, text="Fio", variable=self.fio_var, width=20, anchor="w").pack(fill="both", padx=5,
+                                                                                                pady=2)
+        tk.Checkbutton(self.root, text="CrystalDiskInfo", variable=self.crystal_var, width=20, anchor="w").pack(
+            fill="both", padx=5, pady=2)
 
         self.time_label.pack(pady=5)
 
