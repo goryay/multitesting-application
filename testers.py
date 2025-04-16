@@ -1,5 +1,8 @@
 import subprocess
+import time
+import pyautogui
 from PIL import ImageGrab
+
 
 class BaseTester:
     def __init__(self, name):
@@ -18,25 +21,40 @@ class BaseTester:
         screenshot = ImageGrab.grab()
         screenshot.save(filename)
 
+
 class AidaBusinessTester(BaseTester):
-    def __init__(self, name, gpu_enabled):
+    def __init__(self, name, stress_gpu):
         super().__init__(name)
-        self.gpu_enabled = gpu_enabled
+        self.stress_gpu = stress_gpu
 
     def start(self):
-        command = ["aida64.exe", "--stress-cpu", "--stress-fpu", "--stress-cache", "--stress-memory"]
-        if self.gpu_enabled:
-            command.append("--stress-gpu")
-        self.process = subprocess.Popen(command)
+        self.process = subprocess.Popen(["SoftForTest\\AIDA64\\AIDA64Port.exe"])
+        time.sleep(5)  # Подождать запуск интерфейса
+
+        # Открываем меню Сервис -> Тест стабильности системы
+        pyautogui.hotkey("alt", "с")  # Сервис
+        time.sleep(0.5)
+        pyautogui.press(["down"] * 6)  # Тест стабильности системы — 6 раз вниз
+        pyautogui.press("enter")
+        time.sleep(2)
+
+        # Если включена опция стресс-теста GPU, то активируем чекбокс GPU
+        if self.stress_gpu:
+            # Координаты нужно подстроить под расположение окна AIDA64
+            pyautogui.moveTo(400, 420)  # Примерные координаты чекбокса "Stress GPU(s)"
+            pyautogui.click()
+            time.sleep(0.3)
+
+        # Нажимаем "Start"
+        pyautogui.moveTo(100, 680)  # Примерная координата кнопки Start
+        pyautogui.click()
+
 
 class FurmarkTester(BaseTester):
     def start(self):
-        self.process = subprocess.Popen(["furmark.exe"])
+        self.process = subprocess.Popen(["SoftForTest\\FurMark\\furmark.exe"])
+
 
 class FioTester(BaseTester):
     def start(self):
-        self.process = subprocess.Popen(["fio", "--filename=test.fio", "--size=1G", "--rw=write"])
-
-class CrystalDiskInfoTester(BaseTester):
-    def start(self):
-        self.process = subprocess.Popen(["CrystalDiskInfo.exe", "--smart"])
+        self.process = subprocess.Popen(["SoftForTest\\fio.msi", "--filename=test.fio", "--size=1G", "--rw=write"])
