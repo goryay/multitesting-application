@@ -1,0 +1,39 @@
+(17:29:15:246)	FurMark 2.6.0.0 (build: Feb 21 2025@08:08:08)
+(17:29:15:246)	(c)2007-2025 Geeks3D
+(17:29:15:246)	homepage: https://www.geeks3d.com/furmark/
+(17:29:15:246)	discord server : https://geeks3d.com/discord/
+(17:29:15:246)	FurMark (GeeXLab engine) initialization...
+(17:29:15:246)	command line: C:\Users\iamgo\PycharmProjects\multitesting-application\.\\SoftForTest\\FurMark\\furmark.exe --demo furmark-gl --fullscreen --width 1920 --height 1080 --max-time 600 --no-score-box --disable-demo-options 
+(17:29:15:246)	FurMark home directory: C:\Users\iamgo\PycharmProjects\multitesting-application\SoftForTest\FurMark\
+(17:29:15:246)	[stb] STB image loader. Supported formats: *.JPEG, *.PNG, *.TGA, *.BMP, *.PSD, *.GIF, *.HDR, *.PIC
+(17:29:15:246)	[tinyexr] EXR image loader.
+(17:29:15:246)	[lib3ds] Lib3ds loader (core plugin).
+(17:29:15:246)	[ObjLoaderV1] OBJ 3D loader (core plugin).
+(17:29:15:246)	[ObjLoaderV2] OBJ loader based on Tiny OBJ Loader (core plugin).
+(17:29:15:246)	[STL] STL (StereoLithography) 3D loader (core plugin).
+(17:29:15:246)	[glTF] glTF 3D loader (core plugin).
+(17:29:15:246)	[SQLite3] SQLite3 version 3.49.0
+(17:29:15:246)	GraphX Core 0.57.0.0 (codename: Maxwell) initialization ok.
+(17:29:15:246)	Windows version: Windows 10 build 19045
+(17:29:15:246)	HW platform type: PC
+(17:29:15:247)	SW platform type: Windows 64-bit
+(17:29:15:248)	[GpuMonitor] Operating system detected: Windows 10 build 19045
+(17:29:15:256)	[GpuMonitor] NV/R530+: physical GPU(s): 1 - logical GPU(s): 1
+(17:29:16:180)	[GpuMonitor] Num GPUs detected: 2
+(17:29:16:180)	[GpuMonitor] > GPU0
+(17:29:16:180)	[GpuMonitor]   - name: NVIDIA GeForce RTX 3060 Laptop GPU
+(17:29:16:180)	[GpuMonitor]   - PCI codes: 0x10DE-0x2520
+(17:29:16:180)	[GpuMonitor]   - Bus ID: 1
+(17:29:16:180)	[GpuMonitor]   - VBIOS: 94.06.1f.00.2d
+(17:29:16:180)	[GpuMonitor]   - core temperature: 54 degC
+(17:29:16:180)	[GpuMonitor]   - driver: 572.16
+(17:29:16:180)	[GpuMonitor] > GPU1
+(17:29:16:180)	[GpuMonitor]   - name: AMD Radeon(TM) Graphics
+(17:29:16:180)	[GpuMonitor]   - PCI codes: 0x1002-0x1638
+(17:29:16:180)	[GpuMonitor]   - Bus ID: 6
+(17:29:16:180)	[GpuMonitor]   - VBIOS: 017.010.000.029/113-CEZANNE-018 (2021/02/28 08:58)
+(17:29:16:180)	[GpuMonitor]   - core temperature: 56 degC
+(17:29:16:180)	[GpuMonitor]   - driver: Adrenalin 20.40.64.05
+(17:29:16:180)	FurMark (GeeXLab engine) started ok.
+(17:29:16:180)	system DPI: 96
+(17:29:16:196)	Unable to switch to fullscreen mode (1920x1080)! Try with another resolution.

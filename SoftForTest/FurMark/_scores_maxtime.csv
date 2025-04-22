@@ -1,0 +1,29 @@
+date,demo,platform,vendor,renderer,api_version,width,height,fullscreen,antialiasing,max_time,frames,max_gpu_temp,avg_fps,min_fps,max_fps
+2025.03.17@13:32:31,furmark-gl,Windows 64-bit,Intel,Intel(R) Iris(R) Plus Graphics 655,OpenGL 4.6.0 - Build 27.20.100.8681,3840,2130,NO,Off,6,26,-1,4,3,7
+2025.03.17@13:33:33,furmark-gl,Windows 64-bit,Intel,Intel(R) Iris(R) Plus Graphics 655,OpenGL 4.6.0 - Build 27.20.100.8681,3840,2130,NO,Off,6,25,-1,3,2,7
+2025.03.18@10:44:21,furmark-gl,Windows 64-bit,Intel,Intel(R) Iris(R) Plus Graphics 655,OpenGL 4.6.0 - Build 27.20.100.8681,3840,2130,NO,Off,10,35,-1,3,1,7
+2025.03.20@14:17:54,furmark-gl,Windows 64-bit,Intel,Intel(R) Iris(R) Plus Graphics 655,OpenGL 4.6.0 - Build 27.20.100.8681,1280,720,NO,Off,10,164,-1,16,14,20
+2025.03.20@15:44:28,furmark-gl,Windows 64-bit,Intel,Intel(R) Iris(R) Plus Graphics 655,OpenGL 4.6.0 - Build 27.20.100.8681,1280,720,NO,Off,10,192,-1,19,17,21
+2025.03.20@16:16:40,furmark-gl,Windows 64-bit,Intel,Intel(R) Iris(R) Plus Graphics 655,OpenGL 4.6.0 - Build 27.20.100.8681,1280,720,NO,Off,10,168,-1,16,13,20
+2025.03.26@09:09:14,furmark-gl,Windows 64-bit,Intel,Intel(R) Iris(R) Plus Graphics 655,OpenGL 4.6.0 - Build 27.20.100.8681,1280,720,NO,Off,60,1006,-1,16,2,21
+2025.03.26@13:28:08,furmark-gl,Windows 64-bit,Intel,Intel(R) Iris(R) Plus Graphics 655,OpenGL 4.6.0 - Build 27.20.100.8681,1280,720,NO,Off,20,374,-1,18,17,21
+2025.03.26@13:40:05,furmark-gl,Windows 64-bit,Intel,Intel(R) Iris(R) Plus Graphics 655,OpenGL 4.6.0 - Build 27.20.100.8681,1280,720,NO,Off,10,200,-1,19,18,21
+2025.03.26@13:59:35,furmark-gl,Windows 64-bit,Intel,Intel(R) Iris(R) Plus Graphics 655,OpenGL 4.6.0 - Build 27.20.100.8681,1280,720,NO,Off,60,687,-1,11,8,20
+2025.03.28@10:09:45,furmark-vk,Windows 64-bit,Intel,Intel(R) Iris(R) Plus Graphics 655,Vulkan 1.2.148,1280,720,YES,Off,10,35,-1,3,1,9
+2025.03.28@10:09:45,furmark-vk,Windows 64-bit,Intel,Intel(R) Iris(R) Plus Graphics 655,Vulkan 1.2.148,1280,720,YES,Off,10,157,-1,15,10,20
+2025.04.02@14:24:35,furmark-vk,Windows 64-bit,NVIDIA,NVIDIA GeForce GTX 1050 Ti,Vulkan 1.4.303,1920,1080,YES,Off,10,324,-1,32,31,34
+2025.04.09@09:42:19,furmark-vk,Windows 64-bit,NVIDIA,NVIDIA GeForce GTX 1050 Ti,Vulkan 1.4.303,1920,1080,NO,Off,360,11497,67,31,29,35
+2025.04.09@10:02:37,furmark-vk,Windows 64-bit,NVIDIA,NVIDIA GeForce GTX 1050 Ti,Vulkan 1.4.303,1920,1080,NO,Off,360,11427,67,31,13,35
+2025.04.09@10:10:05,furmark-vk,Windows 64-bit,NVIDIA,NVIDIA GeForce GTX 1050 Ti,Vulkan 1.4.303,1920,1080,NO,Off,360,11560,68,32,29,35
+2025.04.09@10:24:43,furmark-vk,Windows 64-bit,NVIDIA,NVIDIA GeForce GTX 1050 Ti,Vulkan 1.4.303,1920,1080,NO,Off,360,11602,68,32,32,35
+2025.04.09@10:35:04,furmark-vk,Windows 64-bit,NVIDIA,NVIDIA GeForce GTX 1050 Ti,Vulkan 1.4.303,1920,1040,NO,Off,360,12244,67,34,32,37
+2025.04.09@10:52:11,furmark-vk,Windows 64-bit,NVIDIA,NVIDIA GeForce GTX 1050 Ti,Vulkan 1.4.303,1920,1080,NO,Off,360,11627,67,32,31,35
+2025.04.09@12:06:34,furmark-vk,Windows 64-bit,NVIDIA,NVIDIA GeForce GTX 1050 Ti,Vulkan 1.4.303,1920,1080,NO,Off,360,11503,67,31,29,34
+2025.04.11@08:44:15,furmark-vk,Windows 64-bit,NVIDIA,NVIDIA GeForce GTX 1050 Ti,Vulkan 1.4.303,1920,1080,NO,Off,600,17470,68,29,27,33
+2025.04.11@10:35:47,furmark-vk,Windows 64-bit,NVIDIA,NVIDIA GeForce GTX 1050 Ti,Vulkan 1.4.303,1920,1080,NO,Off,600,17432,69,29,27,34
+2025.04.11@12:13:29,furmark-vk,Windows 64-bit,NVIDIA,NVIDIA GeForce GTX 1050 Ti,Vulkan 1.4.303,1920,1080,NO,Off,600,18392,65,30,25,34
+2025.04.11@12:33:06,furmark-vk,Windows 64-bit,NVIDIA,NVIDIA GeForce GTX 1050 Ti,Vulkan 1.4.303,1920,1080,NO,Off,600,17511,67,29,27,33
+2025.04.21@13:36:09,furmark-gl,Windows 64-bit,NVIDIA Corporation,NVIDIA GeForce RTX 3060 Laptop GPU/PCIe/SSE2,OpenGL 4.6.0 NVIDIA 572.16,1920,1080,YES,Off,60,5724,67,95,82,99
+2025.04.21@13:48:38,furmark-gl,Windows 64-bit,NVIDIA Corporation,NVIDIA GeForce RTX 3060 Laptop GPU/PCIe/SSE2,OpenGL 4.6.0 NVIDIA 572.16,1920,1080,YES,Off,600,7756,88,12,2,97
+2025.04.21@15:06:54,furmark-gl,Windows 64-bit,NVIDIA Corporation,NVIDIA GeForce RTX 3060 Laptop GPU/PCIe/SSE2,OpenGL 4.6.0 NVIDIA 572.16,1920,1080,YES,Off,600,7148,88,11,1,90
+2025.04.22@16:51:09,furmark-gl,Windows 64-bit,NVIDIA Corporation,NVIDIA GeForce RTX 3060 Laptop GPU/PCIe/SSE2,OpenGL 4.6.0 NVIDIA 572.16,1920,1080,YES,Off,600,43944,89,73,0,96

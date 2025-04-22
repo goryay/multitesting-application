@@ -1,0 +1,11 @@
+date,demo,platform,vendor,renderer,api_version,width,height,fullscreen,antialiasing,duration,max_gpu_temp,score,avg_fps,min_fps,max_fps
+2025.03.17@13:32:31,furmark-gl,Windows 64-bit,Intel,Intel(R) Iris(R) Plus Graphics 655,OpenGL 4.6.0 - Build 27.20.100.8681,3840,2130,NO,Off,6080,-1,26,4,3,7
+2025.03.17@13:33:33,furmark-gl,Windows 64-bit,Intel,Intel(R) Iris(R) Plus Graphics 655,OpenGL 4.6.0 - Build 27.20.100.8681,3840,2130,NO,Off,6057,-1,25,3,2,7
+2025.03.18@10:44:21,furmark-gl,Windows 64-bit,Intel,Intel(R) Iris(R) Plus Graphics 655,OpenGL 4.6.0 - Build 27.20.100.8681,3840,2130,NO,Off,10313,-1,35,3,1,7
+2025.03.20@14:17:54,furmark-gl,Windows 64-bit,Intel,Intel(R) Iris(R) Plus Graphics 655,OpenGL 4.6.0 - Build 27.20.100.8681,1280,720,NO,Off,10021,-1,164,16,14,20
+2025.03.20@15:44:28,furmark-gl,Windows 64-bit,Intel,Intel(R) Iris(R) Plus Graphics 655,OpenGL 4.6.0 - Build 27.20.100.8681,1280,720,NO,Off,10040,-1,192,19,17,21
+2025.03.20@16:16:40,furmark-gl,Windows 64-bit,Intel,Intel(R) Iris(R) Plus Graphics 655,OpenGL 4.6.0 - Build 27.20.100.8681,1280,720,NO,Off,10043,-1,168,16,13,20
+2025.03.26@09:09:14,furmark-gl,Windows 64-bit,Intel,Intel(R) Iris(R) Plus Graphics 655,OpenGL 4.6.0 - Build 27.20.100.8681,1280,720,NO,Off,60016,-1,1006,16,2,21
+2025.03.26@13:28:08,furmark-gl,Windows 64-bit,Intel,Intel(R) Iris(R) Plus Graphics 655,OpenGL 4.6.0 - Build 27.20.100.8681,1280,720,NO,Off,20013,-1,374,18,17,21
+2025.03.26@13:40:05,furmark-gl,Windows 64-bit,Intel,Intel(R) Iris(R) Plus Graphics 655,OpenGL 4.6.0 - Build 27.20.100.8681,1280,720,NO,Off,10052,-1,200,19,18,21
+2025.03.26@13:59:35,furmark-gl,Windows 64-bit,Intel,Intel(R) Iris(R) Plus Graphics 655,OpenGL 4.6.0 - Build 27.20.100.8681,1280,720,NO,Off,60085,-1,687,11,8,20
