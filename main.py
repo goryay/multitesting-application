@@ -13,7 +13,7 @@ class TestLauncherApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Меню тестирования")
-        self.root.geometry("500x800")
+        self.root.geometry("500x1000")
 
         self.test_choice = tk.StringVar(value="1")
         self.time_choice = tk.StringVar(value="3")
@@ -65,6 +65,7 @@ class TestLauncherApp:
 
         tk.Button(self.root, text="Запустить тест", command=self.run_test).pack(pady=10)
         tk.Button(self.root, text="Сделать скриншот", command=self.take_screenshot).pack(pady=5)
+        tk.Button(self.root, text="Создать отчёт", command=self.generate_report).pack(pady=5)
         tk.Button(self.root, text="Выход", command=self.root.quit).pack(pady=5)
 
     def toggle_custom(self):
@@ -160,14 +161,11 @@ class TestLauncherApp:
         screenshot.save(path)
         print(f"Скриншот сохранён: {path}")
 
-
-def generate_report(self):
+    def generate_report(self):
         try:
-            from datetime import datetime
             import platform
             import psutil
             import pathlib
-            import tkinter.messagebox
 
             now = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
             doc_path = pathlib.Path.home() / "Documents" / "TestReports"
@@ -176,26 +174,33 @@ def generate_report(self):
             with open("system_report.html", "r", encoding="utf-8") as f:
                 html = f.read()
 
-            html = html.replace("{{cpu_info}}", platform.processor())
-            html = html.replace("{{ram_total}}", f"{round(psutil.virtual_memory().total / (1024**3), 2)} GB")
-            html = html.replace("{{os_info}}", platform.platform())
+            # Подставим актуальные данные
+            cpu_info = platform.processor()
+            ram_total = f"{round(psutil.virtual_memory().total / (1024 ** 3), 2)} GB"
+            os_info = platform.platform()
 
             disk_html = ""
             for part in psutil.disk_partitions():
                 try:
                     usage = psutil.disk_usage(part.mountpoint)
-                    disk_html += f"<li>{part.device} ({part.mountpoint}): {round(usage.total / (1024**3), 2)} GB</li>"
+                    disk_html += f"<li>{part.device} ({part.mountpoint}): {round(usage.total / (1024 ** 3), 2)} GB</li>"
                 except Exception:
                     continue
+
+            # Меняем данные в шаблоне
+            html = html.replace("{{cpu_info}}", cpu_info)
+            html = html.replace("{{ram_total}}", ram_total)
+            html = html.replace("{{os_info}}", os_info)
             html = html.replace("{{disk_info}}", disk_html)
 
             report_path = doc_path / f"system_report_{now}.html"
             with open(report_path, "w", encoding="utf-8") as f:
                 f.write(html)
 
-            tkinter.messagebox.showinfo("Готово", f"Отчёт сохранён: {report_path}")
+            messagebox.showinfo("Готово", f"Отчёт сохранён: {report_path}")
         except Exception as e:
-            tkinter.messagebox.showerror("Ошибка", f"Ошибка при генерации отчета: {e}")
+            messagebox.showerror("Ошибка", f"Ошибка при генерации отчета: {e}")
+
 
 if __name__ == '__main__':
     root = tk.Tk()
