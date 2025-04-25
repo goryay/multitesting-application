@@ -145,6 +145,12 @@ class TestLauncherApp:
         cmd = f'"{pwsh_path}" -ExecutionPolicy Bypass -File "{script_full_path}" {" ".join(args)}'
 
         try:
+            st_script = os.path.abspath("ST.py")
+            subprocess.Popen(['python', st_script, '--all'], shell=True)
+        except Exception as e:
+            print(f"Ошибка запуска ST.py: {e}")
+
+        try:
             subprocess.Popen(cmd, shell=True)
         except Exception as e:
             messagebox.showerror("Ошибка", f"Не удалось запустить скрипт:\n{e}")
