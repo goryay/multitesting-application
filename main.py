@@ -140,9 +140,9 @@ class TestLauncherApp:
         duration_seconds = int(duration) * 60
         self.schedule_screenshots(duration_seconds)
 
-        pwsh_path = r'"C:\\Program Files\\PowerShell\\7\\pwsh.exe"'
+        pwsh_path = r'C:\Program Files\PowerShell\7\pwsh.exe'
         script_full_path = os.path.abspath("aida_fio_furmark.ps1")
-        cmd = f'{pwsh_path} -ExecutionPolicy Bypass -File "{script_full_path}" {" ".join(args)}'
+        cmd = f'"{pwsh_path}" -ExecutionPolicy Bypass -File "{script_full_path}" {" ".join(args)}'
 
         try:
             subprocess.Popen(cmd, shell=True)
@@ -158,11 +158,9 @@ class TestLauncherApp:
         now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         computer_name = os.environ.get("COMPUTERNAME", "Unknown")
         base_path = os.path.join(os.path.expanduser("~"), "Desktop", "Report", computer_name)
-
-        os.makedirs(base_path, exist_ok=True)  # создаёт папку, если её нет
-
+        os.makedirs(base_path, exist_ok=True)
         screenshot = pyautogui.screenshot()
-        path = os.path.join(base_path, f"test_screenshot_{now}.png")
+        path = os.path.join(base_path, f"screenshot_{now}.png")
         screenshot.save(path)
         print(f"Скриншот сохранён: {path}")
 
@@ -170,22 +168,36 @@ class TestLauncherApp:
         try:
             computer_name = os.environ.get("COMPUTERNAME", "Unknown")
             desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
+            report_dir = os.path.join(desktop_path, "Report", computer_name)
+            os.makedirs(report_dir, exist_ok=True)
+
             aida_path = os.path.abspath("SoftForTest\\AIDA64\\AIDA64Port.exe")
             script_path = os.path.abspath("aida_fio_furmark.ps1")
-
+            smart_script = os.path.abspath("smart.ps1")
             pwsh_path = r"C:\Program Files\PowerShell\7\pwsh.exe"
 
-            ps_command = (
+            # 1. Генерация отчета AIDA64 (асинхронно)
+            ps_aida = (
                 f". '{script_path}'; "
                 f"Generate-Report -computerName '{computer_name}' "
                 f"-desktopPath '{desktop_path}' "
                 f"-aida64FullPath '{aida_path}'"
             )
+            subprocess.Popen([pwsh_path, "-ExecutionPolicy", "Bypass", "-Command", ps_aida])
 
-            subprocess.Popen([pwsh_path, "-ExecutionPolicy", "Bypass", "-Command", ps_command])
-            messagebox.showinfo("Успешно", "Генерация отчёта запущена!\nПроверьте папку Report на рабочем столе позже.")
+            # 2. Скриншот
+            self.take_screenshot()
+
+            # 3. Генерация SMART-отчёта
+            smart_output = os.path.join(report_dir, f"smart_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.txt")
+            subprocess.run([pwsh_path, "-ExecutionPolicy", "Bypass", "-File", smart_script, smart_output], check=True)
+
+            messagebox.showinfo("Успешно", f"Все отчёты и скриншоты сохранены в:\n{report_dir}")
+
+        except subprocess.CalledProcessError as e:
+            messagebox.showerror("Ошибка", f"Команда вернула ошибку:\n{e}")
         except Exception as e:
-            messagebox.showerror("Ошибка", f"Ошибка при запуске отчёта:\n{e}")
+            messagebox.showerror("Ошибка", f"Ошибка при создании отчета:\n{e}")
 
 
 if __name__ == '__main__':
