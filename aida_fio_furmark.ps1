@@ -126,7 +126,11 @@ rw=rw
 }
 
 function Generate-Report {
-    param([string]$computerName, [string]$desktopPath, [string]$aida64FullPath)
+    param(
+        [string]$computerName,
+        [string]$desktopPath,
+        [string]$aida64FullPath
+    )
 
     $reportDirectory = Join-Path -Path $desktopPath -ChildPath "Report\$computerName"
     $ReportPath = Join-Path -Path $reportDirectory -ChildPath "SystemReport.html"
@@ -135,22 +139,18 @@ function Generate-Report {
         New-Item -ItemType Directory -Path $reportDirectory | Out-Null
     }
 
-    $process = Start-Process -FilePath $aida64FullPath -ArgumentList @(
-        "/R `"$ReportPath`"",
-        "/ALL", "/SUM", "/HW", "/SW", "/AUDIT", "/HTML"
-    ) -Wait -NoNewWindow -PassThru
+    try {
+        # Генерация отчета AIDA64 (без ожидания завершения)
+        Start-Process -FilePath $aida64FullPath -ArgumentList @(
+            "/R `"$ReportPath`"",
+            "/ALL", "/SUM", "/HW", "/SW", "/AUDIT", "/HTML"
+        ) -NoNewWindow
 
-    if ($process.ExitCode -eq 0) {
-        Write-Host "Отчёт успешно создан: $ReportPath"
-    } else {
-        throw "Ошибка при генерации отчета AIDA64. Код выхода: $($process.ExitCode)"
+        Write-Host "Запущена генерация отчета AIDA64 в фоне: $ReportPath"
     }
-
-    Write-Host "Путь к AIDA64: $aida64FullPath"
-if (-not (Test-Path $aida64FullPath)) {
-    throw "Файл AIDA64 не найден по пути: $aida64FullPath"
-}
-
+    catch {
+        Write-Host "Ошибка при запуске генерации отчета AIDA64: $_"
+    }
 }
 
 
