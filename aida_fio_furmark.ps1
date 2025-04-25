@@ -125,6 +125,35 @@ rw=rw
     }
 }
 
+function Generate-Report {
+    param([string]$computerName, [string]$desktopPath, [string]$aida64FullPath)
+
+    $reportDirectory = Join-Path -Path $desktopPath -ChildPath "Report\$computerName"
+    $ReportPath = Join-Path -Path $reportDirectory -ChildPath "SystemReport.html"
+
+    if (-Not (Test-Path -Path $reportDirectory)) {
+        New-Item -ItemType Directory -Path $reportDirectory | Out-Null
+    }
+
+    $process = Start-Process -FilePath $aida64FullPath -ArgumentList @(
+        "/R `"$ReportPath`"",
+        "/ALL", "/SUM", "/HW", "/SW", "/AUDIT", "/HTML"
+    ) -Wait -NoNewWindow -PassThru
+
+    if ($process.ExitCode -eq 0) {
+        Write-Host "Отчёт успешно создан: $ReportPath"
+    } else {
+        throw "Ошибка при генерации отчета AIDA64. Код выхода: $($process.ExitCode)"
+    }
+
+    Write-Host "Путь к AIDA64: $aida64FullPath"
+if (-not (Test-Path $aida64FullPath)) {
+    throw "Файл AIDA64 не найден по пути: $aida64FullPath"
+}
+
+}
+
+
 # --- ОБРАБОТКА GUI АРГУМЕНТОВ ---
 # === GUI-режим ===
 if ($args.Count -ge 2)
@@ -177,7 +206,6 @@ if ($args.Count -ge 2)
         $aidaProcess = Start-AidaTest -hours $hours -includeGPU $includeGPU
         $aidaProcess.WaitForExit()
     }
-
 
     Write-Host "Тестирование завершено. Нажмите Enter..."
     Read-Host

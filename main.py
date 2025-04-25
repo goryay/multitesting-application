@@ -156,50 +156,36 @@ class TestLauncherApp:
 
     def take_screenshot(self):
         now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        computer_name = os.environ.get("COMPUTERNAME", "Unknown")
+        base_path = os.path.join(os.path.expanduser("~"), "Desktop", "Report", computer_name)
+
+        os.makedirs(base_path, exist_ok=True)  # создаёт папку, если её нет
+
         screenshot = pyautogui.screenshot()
-        path = os.path.join(os.path.expanduser("~"), "Pictures", f"test_screenshot_{now}.png")
+        path = os.path.join(base_path, f"test_screenshot_{now}.png")
         screenshot.save(path)
         print(f"Скриншот сохранён: {path}")
 
     def generate_report(self):
         try:
-            import platform
-            import psutil
-            import pathlib
+            computer_name = os.environ.get("COMPUTERNAME", "Unknown")
+            desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
+            aida_path = os.path.abspath("SoftForTest\\AIDA64\\AIDA64Port.exe")
+            script_path = os.path.abspath("aida_fio_furmark.ps1")
 
-            now = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-            doc_path = pathlib.Path.home() / "Documents" / "TestReports"
-            doc_path.mkdir(parents=True, exist_ok=True)
+            pwsh_path = r"C:\Program Files\PowerShell\7\pwsh.exe"
 
-            with open("system_report.html", "r", encoding="utf-8") as f:
-                html = f.read()
+            ps_command = (
+                f". '{script_path}'; "
+                f"Generate-Report -computerName '{computer_name}' "
+                f"-desktopPath '{desktop_path}' "
+                f"-aida64FullPath '{aida_path}'"
+            )
 
-            # Подставим актуальные данные
-            cpu_info = platform.processor()
-            ram_total = f"{round(psutil.virtual_memory().total / (1024 ** 3), 2)} GB"
-            os_info = platform.platform()
-
-            disk_html = ""
-            for part in psutil.disk_partitions():
-                try:
-                    usage = psutil.disk_usage(part.mountpoint)
-                    disk_html += f"<li>{part.device} ({part.mountpoint}): {round(usage.total / (1024 ** 3), 2)} GB</li>"
-                except Exception:
-                    continue
-
-            # Меняем данные в шаблоне
-            html = html.replace("{{cpu_info}}", cpu_info)
-            html = html.replace("{{ram_total}}", ram_total)
-            html = html.replace("{{os_info}}", os_info)
-            html = html.replace("{{disk_info}}", disk_html)
-
-            report_path = doc_path / f"system_report_{now}.html"
-            with open(report_path, "w", encoding="utf-8") as f:
-                f.write(html)
-
-            messagebox.showinfo("Готово", f"Отчёт сохранён: {report_path}")
+            subprocess.Popen([pwsh_path, "-ExecutionPolicy", "Bypass", "-Command", ps_command])
+            messagebox.showinfo("Успешно", "Генерация отчёта запущена!\nПроверьте папку Report на рабочем столе позже.")
         except Exception as e:
-            messagebox.showerror("Ошибка", f"Ошибка при генерации отчета: {e}")
+            messagebox.showerror("Ошибка", f"Ошибка при запуске отчёта:\n{e}")
 
 
 if __name__ == '__main__':
