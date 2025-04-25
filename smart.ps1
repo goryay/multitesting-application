@@ -2,7 +2,7 @@
 $smartctlPath = "C:\Program Files\smartmontools\bin\smartctl.exe"
 
 # Папка для отчётов на рабочем столе
-$reportFolder = "$env:USERPROFILE\Desktop\SMART_Reports"
+$reportFolder = "$env:USERPROFILE\Desktop\Report\SMART_Reports"
 if (-not (Test-Path $reportFolder)) {
     New-Item -ItemType Directory -Path $reportFolder | Out-Null
 }
