@@ -159,6 +159,7 @@ class TestLauncherApp:
         if duration_seconds > 300:
             threading.Timer(duration_seconds - 300, self.take_screenshot).start()
         threading.Timer(duration_seconds, self.take_screenshot).start()
+        threading.Timer(duration_seconds + 10, self.take_screenshot).start()
 
     def take_screenshot(self):
         now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
