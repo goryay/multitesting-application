@@ -1,106 +1,71 @@
 import os
 import time
+from datetime import datetime
 import win32gui
 import win32con
-import ctypes
-from mss import mss as mss_module
-import mss.tools
+import win32com.client
+from mss import mss
+from PIL import Image
 
-# --- Папка для сохранения ---
-desktop_path = os.path.join(os.environ["USERPROFILE"], "Desktop")
-report_folder = os.path.join(desktop_path, "report")
-os.makedirs(report_folder, exist_ok=True)
+TARGET_KEYWORDS = ["aida64", "furmark", "fio", "console", "System Stability Test", "FurMark",
+                   "cmd.exe", "fio.exe"]
 
-# --- Игнорируемые заголовки ---
-IGNORED_TITLES = {
-    "Program Manager",
-    "Начальный экран",
-    "Проводник",
-    "Microsoft Text Input Application",
-    "Default IME",
-    "Windows Shell Experience Host",
-    "SearchPreloadHelper",
-    "Input Indicator Window"
-}
 
-# --- Список для обязательной проверки всех терминалов ---
-TERMINAL_KEYWORDS = {
-    "cmd", "powershell", "command prompt", "windows terminal"
-}
+# TARGET_KEYWORDS = ["aida64", "furmark", "fio", "cmd", "console", "cmd.exe"]
 
-def enum_windows_callback(hwnd, windows):
-    if win32gui.IsWindowVisible(hwnd):
-        title = win32gui.GetWindowText(hwnd)
-        if title:
-            windows.append((hwnd, title))
-    return True
 
-def allow_set_foreground_window(process_id):
-    ASFW_ANY = 0xFFFFFFFF
-    ctypes.windll.user32.AllowSetForegroundWindow(ASFW_ANY)
+def get_report_directory():
+    desktop = os.path.join(os.path.join(os.environ["USERPROFILE"]), "Desktop")
+    computer_name = os.environ["COMPUTERNAME"]
+    report_directory = os.path.join(desktop, "Report", computer_name)
+    if not os.path.exists(report_directory):
+        os.makedirs(report_directory)
+    return report_directory
 
-def take_screenshot_of_window(hwnd, title):
+
+def capture_window(hwnd, folder):
+    if not win32gui.IsWindowVisible(hwnd):
+        return
+
+    title = win32gui.GetWindowText(hwnd)
+    if not any(keyword in title.lower() for keyword in TARGET_KEYWORDS):
+        return
+
     try:
-        # Активируем окно
-        allow_set_foreground_window(os.getpid())
         win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+        shell = win32com.client.Dispatch("WScript.Shell")
+        shell.SendKeys('%')  # Чтобы избежать Access Denied
         win32gui.SetForegroundWindow(hwnd)
-        time.sleep(1)  # Задержка перед созданием скриншота
+        time.sleep(0.5)
 
         rect = win32gui.GetWindowRect(hwnd)
-        width = rect[2] - rect[0]
-        height = rect[3] - rect[1]
+        x, y, x1, y1 = rect
+        width = x1 - x
+        height = y1 - y
 
-        if width <= 0 or height <= 0:
-            print(f"Пропускаем окно '{title}': нулевой размер.")
-            return
+        with mss() as sct:
+            screenshot = sct.grab({"left": x, "top": y, "width": width, "height": height})
+            image = Image.frombytes("RGB", (screenshot.width, screenshot.height), screenshot.rgb)
 
-        with mss_module() as sct:
-            monitor = {
-                "top": rect[1],
-                "left": rect[0],
-                "width": width,
-                "height": height
-            }
-            screenshot = sct.grab(monitor)
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            safe_title = "".join(c if c.isalnum() or c in " _-" else "_" for c in title)
+            filename = f"{safe_title}_{x}_{y}_{timestamp}.png"
+            path = os.path.join(folder, filename)
+            image.save(path)
 
-            safe_title = "".join(c if c.isalnum() or c in (" ", "_", "-") else "_" for c in title)
-            filename = f"{safe_title}_{rect[1]}_{rect[0]}.png"  # Используем координаты для уникальности
-            output_path = os.path.join(report_folder, filename)
-
-            mss.tools.to_png(screenshot.rgb, screenshot.size, output=output_path)
             print(f"Скриншот окна '{title}' сохранён как: {filename}")
-
     except Exception as e:
         print(f"Ошибка при работе с окном '{title}': {e}")
 
-def is_terminal_window(title):
-    title_lower = title.lower()
-    for keyword in TERMINAL_KEYWORDS:
-        if keyword in title_lower:
-            return True
-    return False
 
-def main():
-    print("Получение списка открытых окон...")
+def capture_test_windows():
+    print("Получение списка окон тестирования...")
+    folder = get_report_directory()
+    win32gui.EnumWindows(lambda hwnd, _: capture_window(hwnd, folder), None)
+    print("Скриншоты окон тестирования успешно сделаны.")
 
-    windows = []
-    win32gui.EnumWindows(enum_windows_callback, windows)
-
-    if not windows:
-        print("Нет видимых окон для съемки.")
-        return
-
-    for hwnd, title in windows:
-        title = title.strip()
-
-        if not title or title in IGNORED_TITLES:
-            continue
-
-        print(f"Обрабатываю окно: {title}")
-        take_screenshot_of_window(hwnd, title)
-
-    print("Скриншоты всех подходящих окон успешно сделаны.")
 
 if __name__ == "__main__":
-    main()
+    # time.sleep(300)  # Подождать 5 секунд перед началом
+    time.sleep(600)  # Подождать 5 секунд перед началом
+    capture_test_windows()
