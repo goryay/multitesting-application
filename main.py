@@ -167,82 +167,65 @@ class TestLauncherApp:
         args.append(duration)
 
         duration_seconds = int(duration) * 60
+        pwsh_path = r'C:\Program Files\PowerShell\7\pwsh.exe'
+        script_full_path = os.path.abspath("aida_fio_furmark.ps1")
+        cmd = f'"{pwsh_path}" -ExecutionPolicy Bypass -File "{script_full_path}" {" ".join(args)}'
 
-        # Задержка перед запуском скриншотов, чтобы дождаться появления окон тестов
-        screen_script = os.path.abspath("screen.py")
-        threading.Timer(30, lambda: subprocess.Popen(['python', screen_script])).start()
+        # try:
+        #     screen_script = os.path.abspath("screen.py")
+        #     subprocess.Popen(['python', screen_script], shell=True)
+        # except Exception as e:
+        #     print(f"Ошибка запуска: {e}")
 
+        try:
+            subprocess.Popen(cmd, shell=True)
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось запустить скрипт:\n{e}")
 
-self.schedule_screenshots(duration_seconds)
-
-pwsh_path = r'C:\Program Files\PowerShell\7\pwsh.exe'
-script_full_path = os.path.abspath("aida_fio_furmark.ps1")
-cmd = f'"{pwsh_path}" -ExecutionPolicy Bypass -File "{script_full_path}" {" ".join(args)}'
-
-try:
-    screen_script = os.path.abspath("screen.py")
-    subprocess.Popen(['python', screen_script], shell=True)
-except Exception as e:
-    print(f"Ошибка запуска: {e}")
-
-try:
-    subprocess.Popen(cmd, shell=True)
-except Exception as e:
-    messagebox.showerror("Ошибка", f"Не удалось запустить скрипт:\n{e}")
-
-
-def schedule_screenshots(self, duration_seconds):
-    if duration_seconds > 300:
-        threading.Timer(duration_seconds - 300, self.take_screenshot).start()
-    threading.Timer(duration_seconds, self.take_screenshot).start()
-    threading.Timer(duration_seconds + 10, self.take_screenshot).start()
-
-
-def take_screenshot(self):
-    now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    computer_name = os.environ.get("COMPUTERNAME", "Unknown")
-    base_path = os.path.join(os.path.expanduser("~"), "Desktop", "Report", computer_name)
-    os.makedirs(base_path, exist_ok=True)
-    screenshot = pyautogui.screenshot()
-    path = os.path.join(base_path, f"screenshot_{now}.png")
-    screenshot.save(path)
-    print(f"Скриншот сохранён: {path}")
-
-
-def generate_report(self):
-    try:
+    def take_screenshot(self):
+        now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         computer_name = os.environ.get("COMPUTERNAME", "Unknown")
-        desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
-        report_dir = os.path.join(desktop_path, "Report", computer_name)
-        os.makedirs(report_dir, exist_ok=True)
+        base_path = os.path.join(os.path.expanduser("~"), "Desktop", "Report", computer_name)
+        os.makedirs(base_path, exist_ok=True)
+        screenshot = pyautogui.screenshot()
+        path = os.path.join(base_path, f"screenshot_{now}.png")
+        screenshot.save(path)
+        print(f"Скриншот сохранён: {path}")
 
-        aida_path = os.path.abspath("SoftForTest\\AIDA64\\AIDA64Port.exe")
-        script_path = os.path.abspath("aida_fio_furmark.ps1")
-        smart_script = os.path.abspath("smart.ps1")
-        pwsh_path = r"C:\Program Files\PowerShell\7\pwsh.exe"
+    def generate_report(self):
+        try:
+            computer_name = os.environ.get("COMPUTERNAME", "Unknown")
+            desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
+            report_dir = os.path.join(desktop_path, "Report", computer_name)
+            os.makedirs(report_dir, exist_ok=True)
 
-        # 1. Генерация отчета AIDA64 (асинхронно)
-        ps_aida = (
-            f". '{script_path}'; "
-            f"Generate-Report -computerName '{computer_name}' "
-            f"-desktopPath '{desktop_path}' "
-            f"-aida64FullPath '{aida_path}'"
-        )
-        subprocess.Popen([pwsh_path, "-ExecutionPolicy", "Bypass", "-Command", ps_aida])
+            aida_path = os.path.abspath("SoftForTest\\AIDA64\\AIDA64Port.exe")
+            script_path = os.path.abspath("aida_fio_furmark.ps1")
+            smart_script = os.path.abspath("smart.ps1")
+            pwsh_path = r"C:\Program Files\PowerShell\7\pwsh.exe"
 
-        # 2. Скриншот
-        self.take_screenshot()
+            # 1. Генерация отчета AIDA64 (асинхронно)
+            ps_aida = (
+                f". '{script_path}'; "
+                f"Generate-Report -computerName '{computer_name}' "
+                f"-desktopPath '{desktop_path}' "
+                f"-aida64FullPath '{aida_path}'"
+            )
+            subprocess.Popen([pwsh_path, "-ExecutionPolicy", "Bypass", "-Command", ps_aida])
 
-        # 3. Генерация SMART-отчёта
-        smart_output = os.path.join(report_dir, f"smart_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.txt")
-        subprocess.run([pwsh_path, "-ExecutionPolicy", "Bypass", "-File", smart_script, smart_output], check=True)
+            # 2. Скриншот
+            self.take_screenshot()
 
-        messagebox.showinfo("Успешно", f"Все отчёты и скриншоты сохранены в:\n{report_dir}")
+            # 3. Генерация SMART-отчёта
+            smart_output = os.path.join(report_dir, f"smart_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.txt")
+            subprocess.run([pwsh_path, "-ExecutionPolicy", "Bypass", "-File", smart_script, smart_output], check=True)
 
-    except subprocess.CalledProcessError as e:
-        messagebox.showerror("Ошибка", f"Команда вернула ошибку:\n{e}")
-    except Exception as e:
-        messagebox.showerror("Ошибка", f"Ошибка при создании отчета:\n{e}")
+            messagebox.showinfo("Успешно", f"Все отчёты и скриншоты сохранены в:\n{report_dir}")
+
+        except subprocess.CalledProcessError as e:
+            messagebox.showerror("Ошибка", f"Команда вернула ошибку:\n{e}")
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Ошибка при создании отчета:\n{e}")
 
 
 if __name__ == '__main__':
