@@ -9,6 +9,33 @@ import pyautogui
 from datetime import datetime
 
 
+def install_dependencies_if_needed():
+    required_paths = [
+        r"C:\Program Files\PowerShell\7\pwsh.exe",
+        r"C:\Program Files\fio\fio.exe",
+        r"C:\Program Files\smartmontools\bin\smartctl.exe"
+    ]
+
+    # Проверяем наличие всех программ
+    all_installed = all(os.path.exists(path) for path in required_paths)
+
+    if not all_installed:
+        desktop = os.path.join(os.path.expanduser("~"), "Desktop")
+        script_path = os.path.join(desktop, "SoftForTest", "install_dependencies.ps1")
+
+        if os.path.exists(script_path):
+            print("Некоторые зависимости не установлены. Запускаем установку...")
+            subprocess.run([
+                r"C:\Program Files\PowerShell\7\pwsh.exe",
+                "-ExecutionPolicy", "Bypass",
+                "-File", script_path
+            ], check=True)
+        else:
+            raise FileNotFoundError(f"Не найден скрипт установки: {script_path}")
+
+# Вставляем в начало main.py
+install_dependencies_if_needed()
+
 class TestLauncherApp:
     def __init__(self, root):
         self.root = root
@@ -145,10 +172,10 @@ class TestLauncherApp:
         cmd = f'"{pwsh_path}" -ExecutionPolicy Bypass -File "{script_full_path}" {" ".join(args)}'
 
         try:
-            st_script = os.path.abspath("ST.py")
+            st_script = os.path.abspath("PSC.py")
             subprocess.Popen(['python', st_script, '--all'], shell=True)
         except Exception as e:
-            print(f"Ошибка запуска ST.py: {e}")
+            print(f"Ошибка запуска PSC.py: {e}")
 
         try:
             subprocess.Popen(cmd, shell=True)
