@@ -4,6 +4,7 @@ import subprocess
 import sys
 import os
 import psutil
+import time
 
 import pyautogui
 from datetime import datetime
@@ -211,6 +212,15 @@ class TestLauncherApp:
             subprocess.Popen(cmd, shell=True)
         except Exception as e:
             messagebox.showerror("Ошибка", f"Не удалось запустить скрипт:\n{e}")
+
+        # Автоматический вызов скриншотов
+        try:
+            subprocess.Popen(cmd, shell=True)
+            time.sleep(30)  # Подождать появления окон
+            screen.capture_test_windows()
+        except Exception as e:
+            print(f"Ошибка вызова screen.capture_test_windows(): {e}")
+
 
     def take_screenshot(self):
         now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
