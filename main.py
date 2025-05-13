@@ -1,15 +1,50 @@
 import tkinter as tk
 from tkinter import messagebox
 import subprocess
+import sys
 import os
 import psutil
+
+import pyautogui
+from datetime import datetime
+
+
+def is_frozen():
+    return getattr(sys, 'frozen', False)
+
+def install_dependencies_if_needed():
+    if is_frozen():
+        return  # Пропустить установку зависимостей, если запускается как EXE
+
+    required_paths = [
+        r"C:\Program Files\PowerShell\7\pwsh.exe",
+        r"C:\Program Files\fio\fio.exe",
+        r"C:\Program Files\smartmontools\bin\smartctl.exe"
+    ]
+
+    all_installed = all(os.path.exists(path) for path in required_paths)
+
+    if not all_installed:
+        script_path = os.path.join(os.path.dirname(__file__), "install_dependencies.ps1")
+        if os.path.exists(script_path):
+            print("Некоторые зависимости не установлены. Запускаем установку...")
+            subprocess.run([
+                r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
+                "-ExecutionPolicy", "Bypass",
+                "-File", script_path
+            ], check=True)
+        else:
+            raise FileNotFoundError(f"Не найден скрипт установки: {script_path}")
+
+# Вставить в main.py
+install_dependencies_if_needed()
 
 
 class TestLauncherApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Меню тестирования")
-        self.root.geometry("450x600")
+        self.root.geometry("500x1000")
 
         self.test_choice = tk.StringVar(value="1")
         self.time_choice = tk.StringVar(value="3")
@@ -60,7 +95,8 @@ class TestLauncherApp:
         self.populate_disks()
 
         tk.Button(self.root, text="Запустить тест", command=self.run_test).pack(pady=10)
-        tk.Button(self.root, text="Остановить все тесты", command=self.kill_tests, fg="red").pack(pady=5)
+        tk.Button(self.root, text="Сделать скриншот", command=self.take_screenshot).pack(pady=5)
+        tk.Button(self.root, text="Создать отчёт", command=self.generate_report).pack(pady=5)
         tk.Button(self.root, text="Выход", command=self.root.quit).pack(pady=5)
 
     def toggle_custom(self):
@@ -80,7 +116,7 @@ class TestLauncherApp:
             if "cdrom" in part.opts or not os.path.exists(part.mountpoint):
                 continue
             var = tk.BooleanVar()
-            dev = part.device.rstrip("\\")
+            dev = part.device.rstrip(":\\")
             cb = tk.Checkbutton(self.disk_frame, text=f"{dev} ({part.mountpoint})", variable=var)
             cb.pack(anchor="w")
             self.checkbuttons.append(cb)
@@ -132,29 +168,66 @@ class TestLauncherApp:
 
         args.append(duration)
 
-        print("DEBUG: Перед запуском PowerShell скрипта")
-        print("DEBUG: Переданные аргументы:", args)
-
-        pwsh_path = r'"C:\\Program Files\\PowerShell\\7\\pwsh.exe"'
+        duration_seconds = int(duration) * 60
+        pwsh_path = r'C:\Program Files\PowerShell\7\pwsh.exe'
         script_full_path = os.path.abspath("aida_fio_furmark.ps1")
-        cmd = f'{pwsh_path} -ExecutionPolicy Bypass -File "{script_full_path}" {" ".join(args)}'
+        cmd = f'"{pwsh_path}" -ExecutionPolicy Bypass -File "{script_full_path}" {" ".join(args)}'
 
-        print("DEBUG: Команда запуска:", cmd)
+        # try:
+        #     screen_script = os.path.abspath("screen.py")
+        #     subprocess.Popen(['python', screen_script], shell=True)
+        # except Exception as e:
+        #     print(f"Ошибка запуска: {e}")
 
         try:
             subprocess.Popen(cmd, shell=True)
         except Exception as e:
             messagebox.showerror("Ошибка", f"Не удалось запустить скрипт:\n{e}")
 
-    def kill_tests(self):
-        targets = ["AIDA64Port.exe", "furmark.exe", "fio.exe"]
-        for proc in psutil.process_iter(["pid", "name"]):
-            try:
-                if proc.info["name"] in targets:
-                    proc.kill()
-            except Exception:
-                pass
-        messagebox.showinfo("Остановлено", "Все тесты были принудительно завершены.")
+    def take_screenshot(self):
+        now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        computer_name = os.environ.get("COMPUTERNAME", "Unknown")
+        base_path = os.path.join(os.path.expanduser("~"), "Desktop", "Report", computer_name)
+        os.makedirs(base_path, exist_ok=True)
+        screenshot = pyautogui.screenshot()
+        path = os.path.join(base_path, f"screenshot_{now}.png")
+        screenshot.save(path)
+        print(f"Скриншот сохранён: {path}")
+
+    def generate_report(self):
+        try:
+            computer_name = os.environ.get("COMPUTERNAME", "Unknown")
+            desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
+            report_dir = os.path.join(desktop_path, "Report", computer_name)
+            os.makedirs(report_dir, exist_ok=True)
+
+            aida_path = os.path.abspath("SoftForTest\\AIDA64\\AIDA64Port.exe")
+            script_path = os.path.abspath("aida_fio_furmark.ps1")
+            smart_script = os.path.abspath("smart.ps1")
+            pwsh_path = r"C:\Program Files\PowerShell\7\pwsh.exe"
+
+            # 1. Генерация отчета AIDA64 (асинхронно)
+            ps_aida = (
+                f". '{script_path}'; "
+                f"Generate-Report -computerName '{computer_name}' "
+                f"-desktopPath '{desktop_path}' "
+                f"-aida64FullPath '{aida_path}'"
+            )
+            subprocess.Popen([pwsh_path, "-ExecutionPolicy", "Bypass", "-Command", ps_aida])
+
+            # 2. Скриншот
+            self.take_screenshot()
+
+            # 3. Генерация SMART-отчёта
+            smart_output = os.path.join(report_dir, f"smart_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.txt")
+            subprocess.run([pwsh_path, "-ExecutionPolicy", "Bypass", "-File", smart_script, smart_output], check=True)
+
+            messagebox.showinfo("Успешно", f"Все отчёты и скриншоты сохранены в:\n{report_dir}")
+
+        except subprocess.CalledProcessError as e:
+            messagebox.showerror("Ошибка", f"Команда вернула ошибку:\n{e}")
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Ошибка при создании отчета:\n{e}")
 
 
 if __name__ == '__main__':
