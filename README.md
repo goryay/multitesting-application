@@ -60,7 +60,22 @@ MWR (Multi-Workload Runner) — это десктопное приложение
 
 4. Выполните сборку:
    ```bash
-   pyinstaller --noconfirm --onefile --name main main.py
+   pyinstaller main.py --onefile --noconfirm `
+  --add-data "SoftForTest;SoftForTest" `
+  --add-data "aida_fio_furmark.ps1;." `
+  --add-data "install_dependencies.ps1;." `
+  --add-data "smart.ps1;." `
+  --hidden-import pyautogui `
+  --hidden-import pygetwindow `
+  --hidden-import pyscreeze `
+  --hidden-import mss `
+  --hidden-import pymsgbox `
+  --hidden-import pytweening `
+  --hidden-import mouseinfo `
+  --hidden-import pyperclip `
+  --hidden-import pillow `
+  --hidden-import psutil
+
    ```
 
 5. После сборки:

@@ -67,5 +67,5 @@ def capture_test_windows():
 
 if __name__ == "__main__":
     # time.sleep(300)  # Подождать 5 секунд перед началом
-    time.sleep(600)  # Подождать 5 секунд перед началом
+    time.sleep(1200)  # Подождать 5 секунд перед началом
     capture_test_windows()

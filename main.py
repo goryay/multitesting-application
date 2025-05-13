@@ -7,15 +7,14 @@ import psutil
 
 import pyautogui
 from datetime import datetime
+import screen
 
 
 def is_frozen():
     return getattr(sys, 'frozen', False)
 
-def install_dependencies_if_needed():
-    if is_frozen():
-        return  # Пропустить установку зависимостей, если запускается как EXE
 
+def install_dependencies_if_needed():
     required_paths = [
         r"C:\Program Files\PowerShell\7\pwsh.exe",
         r"C:\Program Files\fio\fio.exe",
@@ -25,17 +24,46 @@ def install_dependencies_if_needed():
     all_installed = all(os.path.exists(path) for path in required_paths)
 
     if not all_installed:
-        script_path = os.path.join(os.path.dirname(__file__), "install_dependencies.ps1")
+        base_dir = getattr(sys, '_MEIPASS', os.path.dirname(sys.executable)) if is_frozen() else os.path.dirname(
+            __file__)
+        script_path = os.path.join(base_dir, "install_dependencies.ps1")
         if os.path.exists(script_path):
-            print("Некоторые зависимости не установлены. Запускаем установку...")
             subprocess.run([
-                r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
+                "powershell.exe",
                 "-ExecutionPolicy", "Bypass",
                 "-File", script_path
             ], check=True)
         else:
             raise FileNotFoundError(f"Не найден скрипт установки: {script_path}")
 
+
+# def is_frozen():
+#     return getattr(sys, 'frozen', False)
+#
+# def install_dependencies_if_needed():
+#     if is_frozen():
+#         return  # Пропустить установку зависимостей, если запускается как EXE
+#
+#     required_paths = [
+#         r"C:\Program Files\PowerShell\7\pwsh.exe",
+#         r"C:\Program Files\fio\fio.exe",
+#         r"C:\Program Files\smartmontools\bin\smartctl.exe"
+#     ]
+#
+#     all_installed = all(os.path.exists(path) for path in required_paths)
+#
+#     if not all_installed:
+#         script_path = os.path.join(os.path.dirname(__file__), "install_dependencies.ps1")
+#         if os.path.exists(script_path):
+#             print("Некоторые зависимости не установлены. Запускаем установку...")
+#             subprocess.run([
+#                 r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
+#                 "-ExecutionPolicy", "Bypass",
+#                 "-File", script_path
+#             ], check=True)
+#         else:
+#             raise FileNotFoundError(f"Не найден скрипт установки: {script_path}")
+#
 # Вставить в main.py
 install_dependencies_if_needed()
 
@@ -216,7 +244,12 @@ class TestLauncherApp:
             subprocess.Popen([pwsh_path, "-ExecutionPolicy", "Bypass", "-Command", ps_aida])
 
             # 2. Скриншот
-            self.take_screenshot()
+
+            try:
+                screen.capture_test_windows()
+            except Exception as e:
+                print(f"Ошибка при запуске screen.py: {e}")
+                self.take_screenshot()
 
             # 3. Генерация SMART-отчёта
             smart_output = os.path.join(report_dir, f"smart_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.txt")

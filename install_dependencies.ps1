@@ -1,102 +1,49 @@
 # install_dependencies.ps1
 
-# Текущий путь скрипта
-$scriptRoot = $PSScriptRoot
+$ErrorActionPreference = "Stop"
 
-# Пути
-$softPath = Join-Path $scriptRoot "SoftForTest"
-$logPath = Join-Path $scriptRoot "InstallLogs"
-$reqFile = Join-Path $scriptRoot "requirements.txt"
-
-# Инсталляторы
-$psInstaller     = Join-Path $softPath "PowerShell-7.5.0.msi"
-$fioInstaller    = Join-Path $softPath "fio.msi"
-$smartInstaller  = Join-Path $softPath "smartmontools-7.4-1.win32-setup.exe"
-
-# Логи
-$psLog    = Join-Path $logPath "PowerShell_Install.log"
-$fioLog   = Join-Path $logPath "FIO_Install.log"
-$smartLog = Join-Path $logPath "Smartmontools_Install.log"
-
-# Создание папки для логов
-if (-not (Test-Path $logPath)) {
-    New-Item -ItemType Directory -Path $logPath -Force | Out-Null
-}
-
-function Install-MSI($installerPath, $logFilePath) {
-    Start-Process "msiexec.exe" -ArgumentList "/i `"$installerPath`" /quiet /norestart /log `"$logFilePath`"" -Wait -PassThru
-}
-
-function Install-EXE($installerPath, $logFilePath) {
-    Start-Process $installerPath -ArgumentList "/S" -Wait -PassThru
-}
-
-Write-Host "=== Проверка необходимых программ ===" -ForegroundColor Cyan
-
-# PowerShell
-if (-not (Test-Path "C:\Program Files\PowerShell\7\pwsh.exe")) {
-    if (Test-Path $psInstaller) {
-        Write-Host "Установка PowerShell 7.5..." -ForegroundColor Yellow
-        $process = Install-MSI $psInstaller $psLog
-        if ($process.ExitCode -eq 0) {
-            Write-Host "PowerShell 7.5 успешно установлено!" -ForegroundColor Green
-        } else {
-            Write-Host "Ошибка установки PowerShell 7.5 (код $($process.ExitCode)). Лог: $psLog" -ForegroundColor Red
-        }
+function Install-PowerShell7 {
+    $pwshPath = "C:\Program Files\PowerShell\7\pwsh.exe"
+    if (-Not (Test-Path $pwshPath)) {
+        Write-Host "Устанавливается PowerShell 7..."
+        $installer = "$env:TEMP\PowerShell-7-x64.msi"
+        Invoke-WebRequest -Uri "https://github.com/PowerShell/PowerShell/releases/latest/download/PowerShell-7.4.2-win-x64.msi" -OutFile $installer
+        Start-Process "msiexec.exe" -ArgumentList "/i `"$installer`" /quiet /norestart" -Wait
+        Remove-Item $installer
     } else {
-        Write-Host "PowerShell-7.5.0.msi не найден!" -ForegroundColor Red
+        Write-Host "PowerShell 7 уже установлен."
     }
-} else {
-    Write-Host "PowerShell уже установлена." -ForegroundColor Green
 }
 
-# FIO
-if (-not (Test-Path "C:\Program Files\fio\fio.exe")) {
-    if (Test-Path $fioInstaller) {
-        Write-Host "Установка FIO..." -ForegroundColor Yellow
-        $process = Install-MSI $fioInstaller $fioLog
-        if ($process.ExitCode -eq 0) {
-            Write-Host "FIO успешно установлено!" -ForegroundColor Green
-        } else {
-            Write-Host "Ошибка установки FIO (код $($process.ExitCode)). Лог: $fioLog" -ForegroundColor Red
-        }
+function Install-FIO {
+    $fioExe = "C:\Program Files\fio\fio.exe"
+    if (-Not (Test-Path $fioExe)) {
+        Write-Host "Устанавливается FIO..."
+        $zipPath = "$env:TEMP\fio.zip"
+        $extractPath = "C:\Program Files\fio"
+        Invoke-WebRequest -Uri "https://github.com/axboe/fio/releases/download/fio-3.36/fio-3.36-x64.zip" -OutFile $zipPath
+        Expand-Archive -Path $zipPath -DestinationPath $extractPath -Force
+        Remove-Item $zipPath
     } else {
-        Write-Host "fio.msi не найден!" -ForegroundColor Red
+        Write-Host "FIO уже установлен."
     }
-} else {
-    Write-Host "FIO уже установлено." -ForegroundColor Green
 }
 
-# smartmontools
-if (-not (Test-Path "C:\Program Files\smartmontools\bin\smartctl.exe")) {
-    if (Test-Path $smartInstaller) {
-        Write-Host "Установка smartmontools..." -ForegroundColor Yellow
-        $process = Install-EXE $smartInstaller $smartLog
-        if ($process.ExitCode -eq 0) {
-            Write-Host "smartmontools успешно установлены!" -ForegroundColor Green
-        } else {
-            Write-Host "Ошибка установки smartmontools (код $($process.ExitCode)). Лог: $smartLog" -ForegroundColor Red
-        }
+function Install-Smartmontools {
+    $smartCtl = "C:\Program Files\smartmontools\bin\smartctl.exe"
+    if (-Not (Test-Path $smartCtl)) {
+        Write-Host "Устанавливается smartmontools..."
+        $installer = "$env:TEMP\smartmontools.exe"
+        Invoke-WebRequest -Uri "https://netix.dl.sourceforge.net/project/smartmontools/smartmontools/7.3/smartmontools-7.3-1.win32-setup.exe" -OutFile $installer
+        Start-Process $installer -ArgumentList "/SILENT" -Wait
+        Remove-Item $installer
     } else {
-        Write-Host "smartmontools-7.4-1.win32-setup.exe не найден!" -ForegroundColor Red
+        Write-Host "smartmontools уже установлен."
     }
-} else {
-    Write-Host "smartmontools уже установлены." -ForegroundColor Green
 }
 
-# Python зависимости
-if (Test-Path $reqFile) {
-    Write-Host "`nУстановка Python-зависимостей из requirements.txt..." -ForegroundColor Yellow
-    try {
-        python -m pip install --upgrade pip
-        python -m pip install -r $reqFile
-        Write-Host "Зависимости успешно установлены!" -ForegroundColor Green
-    } catch {
-        Write-Host "Ошибка при установке зависимостей." -ForegroundColor Red
-    }
-} else {
-    Write-Host "requirements.txt не найден!" -ForegroundColor Red
-}
+Install-PowerShell7
+Install-FIO
+Install-Smartmontools
 
-Write-Host "`n=== Проверка завершена ===" -ForegroundColor Cyan
-Write-Host "Логи: $logPath" -ForegroundColor Yellow
+Write-Host "Все зависимости установлены."

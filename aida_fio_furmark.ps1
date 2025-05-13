@@ -1,12 +1,3 @@
-function Start-ScreenScript {
-    $pythonPath = "python"
-    $screenScriptPath = Join-Path -Path $PSScriptRoot -ChildPath "screen.py"
-    if (Test-Path $screenScriptPath) {
-        Start-Process -FilePath $pythonPath -ArgumentList "`"$screenScriptPath`""
-    } else {
-        Write-Host "screen.py не найден: $screenScriptPath"
-    }
-}
 
 # Относительные пути (относительно директории скрипта)
 $aida64Path = ".\SoftForTest\AIDA64\AIDA64Port.exe"
@@ -215,32 +206,15 @@ if ($args.Count -ge 2)
         $includeGPU = -not ($selectedTests -contains "FURMARK")
         $aidaProcess = Start-AidaTest -hours $hours -includeGPU $includeGPU
 
-        # Подождать 5 секунд, затем сделать скриншот AIDA64, пока окно открыто
-        Start-Sleep -Seconds 5
-        Start-ScreenScript  # Скриншот во время работы AIDA64
-
         # Дождаться завершения AIDA64
         $aidaProcess.WaitForExit()
 
-        Start-Sleep -Seconds 5
-        Start-ScreenScript  # Скриншот после завершения AIDA64
     }
 
     Write-Host "Тестирование завершено. Нажмите Enter..."
     Read-Host
 
     Start-Sleep -Seconds 5
-
-    # ЗАПУСК screen.py ПОСЛЕ ЗАВЕРШЕНИЯ ВСЕХ ТЕСТОВ
-    Write-Host "Запуск скрипта screen.py для создания финальных скриншотов..."
-    $pythonPath = "python"
-    $screenScriptPath = Join-Path -Path $PSScriptRoot -ChildPath "screen.py"
-
-    if (Test-Path $screenScriptPath) {
-        Start-Process -FilePath $pythonPath -ArgumentList "`"$screenScriptPath`""
-    } else {
-        Write-Host "Файл screen.py не найден по пути: $screenScriptPath"
-    }
 
     exit
 }
