@@ -1,3 +1,13 @@
+function Start-ScreenScript {
+    $pythonExe = Join-Path -Path $PSScriptRoot -ChildPath "main.exe"
+    if (Test-Path $pythonExe) {
+        Start-Process -FilePath $pythonExe -ArgumentList "--screen"
+    } else {
+        Write-Host "main.exe не найден: $pythonExe"
+    }
+}
+
+
 
 # Относительные пути (относительно директории скрипта)
 $aida64Path = ".\SoftForTest\AIDA64\AIDA64Port.exe"
@@ -206,8 +216,18 @@ if ($args.Count -ge 2)
         $includeGPU = -not ($selectedTests -contains "FURMARK")
         $aidaProcess = Start-AidaTest -hours $hours -includeGPU $includeGPU
 
+        Start-Sleep -Seconds 5
+        Start-ScreenScript  # Скриншот во время AIDA
+
         # Дождаться завершения AIDA64
         $aidaProcess.WaitForExit()
+
+        Start-Sleep -Seconds 5
+        Start-ScreenScript  # Скриншот после AIDA
+
+        $exePath = Join-Path $PSScriptRoot "main.exe"
+        Start-Process -FilePath $exePath -ArgumentList "--screen"
+        Start-Sleep -Seconds 7
 
     }
 

@@ -1,14 +1,22 @@
+import sys
+
+if "--screen" in sys.argv:
+    import screen
+
+    screen.capture_test_windows()
+    sys.exit()
+
 import tkinter as tk
 from tkinter import messagebox
 import subprocess
-import sys
 import os
 import psutil
 import time
+import screen
+import threading
 
 import pyautogui
 from datetime import datetime
-import screen
 
 
 def is_frozen():
@@ -38,33 +46,6 @@ def install_dependencies_if_needed():
             raise FileNotFoundError(f"Не найден скрипт установки: {script_path}")
 
 
-# def is_frozen():
-#     return getattr(sys, 'frozen', False)
-#
-# def install_dependencies_if_needed():
-#     if is_frozen():
-#         return  # Пропустить установку зависимостей, если запускается как EXE
-#
-#     required_paths = [
-#         r"C:\Program Files\PowerShell\7\pwsh.exe",
-#         r"C:\Program Files\fio\fio.exe",
-#         r"C:\Program Files\smartmontools\bin\smartctl.exe"
-#     ]
-#
-#     all_installed = all(os.path.exists(path) for path in required_paths)
-#
-#     if not all_installed:
-#         script_path = os.path.join(os.path.dirname(__file__), "install_dependencies.ps1")
-#         if os.path.exists(script_path):
-#             print("Некоторые зависимости не установлены. Запускаем установку...")
-#             subprocess.run([
-#                 r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
-#                 "-ExecutionPolicy", "Bypass",
-#                 "-File", script_path
-#             ], check=True)
-#         else:
-#             raise FileNotFoundError(f"Не найден скрипт установки: {script_path}")
-#
 # Вставить в main.py
 install_dependencies_if_needed()
 
@@ -193,34 +174,43 @@ class TestLauncherApp:
                 return
             duration = self.custom_time.get()
         else:
+            time_map = {
+                "1": "10",
+                "2": "30",
+                "3": "60",
+                "4": "480",
+                "5": "720"
+            }
             duration = time_map.get(self.time_choice.get(), "60")
 
         args.append(duration)
 
         duration_seconds = int(duration) * 60
+        half_duration = duration_seconds // 2
+        near_end = max(5, duration_seconds - 30)
         pwsh_path = r'C:\Program Files\PowerShell\7\pwsh.exe'
         script_full_path = os.path.abspath("aida_fio_furmark.ps1")
         cmd = f'"{pwsh_path}" -ExecutionPolicy Bypass -File "{script_full_path}" {" ".join(args)}'
 
-        # try:
-        #     screen_script = os.path.abspath("screen.py")
-        #     subprocess.Popen(['python', screen_script], shell=True)
-        # except Exception as e:
-        #     print(f"Ошибка запуска: {e}")
-
-        try:
-            subprocess.Popen(cmd, shell=True)
-        except Exception as e:
-            messagebox.showerror("Ошибка", f"Не удалось запустить скрипт:\n{e}")
-
         # Автоматический вызов скриншотов
         try:
-            subprocess.Popen(cmd, shell=True)
+            subprocess.Popen([pwsh_path, "-ExecutionPolicy", "Bypass", "-File", script_full_path, *args])
+
             time.sleep(30)  # Подождать появления окон
-            screen.capture_test_windows()
+
+            def screenshot_after_delay(delay_sec):
+                time.sleep(delay_sec)
+                exe_path = sys.executable if is_frozen() else os.path.abspath("main.py")
+                subprocess.Popen([exe_path, "--screen"], shell=True)
+
+            # screen.capture_test_windows()
+            # Один ближе к середине, один в самом конце, один — через 5 секунд после завершения (последний результат FIO)
+            threading.Thread(target=screenshot_after_delay, args=(half_duration,), daemon=True).start()
+            threading.Thread(target=screenshot_after_delay, args=(near_end,), daemon=True).start()
+            threading.Thread(target=screenshot_after_delay, args=(duration_seconds + 5,), daemon=True).start()
+
         except Exception as e:
             print(f"Ошибка вызова screen.capture_test_windows(): {e}")
-
 
     def take_screenshot(self):
         now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
