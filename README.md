@@ -59,7 +59,7 @@ MWR (Multi-Workload Runner) — это десктопное приложение
    ```
 
 4. Выполните сборку:
-   ```bash
+```bash
    pyinstaller main.py --onefile --noconfirm `
   --add-data "SoftForTest;SoftForTest" `
   --add-data "aida_fio_furmark.ps1;." `
@@ -76,7 +76,7 @@ MWR (Multi-Workload Runner) — это десктопное приложение
   --hidden-import pillow `
   --hidden-import psutil
 
-   ```
+```
 
 5. После сборки:
    - В папку `dist` **необходимо вручную добавить каталог `SoftForTest`**, содержащий AIDA64, FurMark и т.п.

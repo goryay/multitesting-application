@@ -1,49 +1,48 @@
-# install_dependencies.ps1
-
 $ErrorActionPreference = "Stop"
 
-function Install-PowerShell7 {
-    $pwshPath = "C:\Program Files\PowerShell\7\pwsh.exe"
-    if (-Not (Test-Path $pwshPath)) {
+# Абсолютный путь к папке SoftForTest внутри dist
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
+$softPath = Join-Path $scriptDir "SoftForTest"
+
+# Пути к локальным установщикам
+$pwshInstaller = Join-Path $softPath "PowerShell-7.5.0.msi"
+$fioInstaller = Join-Path $softPath "fio-3.36-x64.msi"
+$smartInstaller = Join-Path $softPath "smartmontools-7.4-1.win32-setup.exe"
+
+# Установка PowerShell
+if (-not (Test-Path "C:\Program Files\PowerShell\7\pwsh.exe")) {
+    if (Test-Path $pwshInstaller) {
         Write-Host "Устанавливается PowerShell 7..."
-        $installer = "$env:TEMP\PowerShell-7-x64.msi"
-        Invoke-WebRequest -Uri "https://github.com/PowerShell/PowerShell/releases/latest/download/PowerShell-7.4.2-win-x64.msi" -OutFile $installer
-        Start-Process "msiexec.exe" -ArgumentList "/i `"$installer`" /quiet /norestart" -Wait
-        Remove-Item $installer
+        Start-Process "msiexec.exe" -ArgumentList "/i `"$pwshInstaller`" /quiet /norestart" -Wait
     } else {
-        Write-Host "PowerShell 7 уже установлен."
+        Write-Host "❌ Установщик PowerShell не найден: $pwshInstaller" -ForegroundColor Red
     }
+} else {
+    Write-Host "✔ PowerShell 7 уже установлен."
 }
 
-function Install-FIO {
-    $fioExe = "C:\Program Files\fio\fio.exe"
-    if (-Not (Test-Path $fioExe)) {
+# Установка FIO
+if (-not (Test-Path "C:\Program Files\fio\fio.exe")) {
+    if (Test-Path $fioInstaller) {
         Write-Host "Устанавливается FIO..."
-        $zipPath = "$env:TEMP\fio.zip"
-        $extractPath = "C:\Program Files\fio"
-        Invoke-WebRequest -Uri "https://github.com/axboe/fio/releases/download/fio-3.36/fio-3.36-x64.zip" -OutFile $zipPath
-        Expand-Archive -Path $zipPath -DestinationPath $extractPath -Force
-        Remove-Item $zipPath
+        Start-Process "msiexec.exe" -ArgumentList "/i `"$fioInstaller`" /quiet /norestart" -Wait
     } else {
-        Write-Host "FIO уже установлен."
+        Write-Host "❌ Установщик FIO не найден: $fioInstaller" -ForegroundColor Red
     }
+} else {
+    Write-Host "✔ FIO уже установлен."
 }
 
-function Install-Smartmontools {
-    $smartCtl = "C:\Program Files\smartmontools\bin\smartctl.exe"
-    if (-Not (Test-Path $smartCtl)) {
+# Установка smartmontools
+if (-not (Test-Path "C:\Program Files\smartmontools\bin\smartctl.exe")) {
+    if (Test-Path $smartInstaller) {
         Write-Host "Устанавливается smartmontools..."
-        $installer = "$env:TEMP\smartmontools.exe"
-        Invoke-WebRequest -Uri "https://netix.dl.sourceforge.net/project/smartmontools/smartmontools/7.3/smartmontools-7.3-1.win32-setup.exe" -OutFile $installer
-        Start-Process $installer -ArgumentList "/SILENT" -Wait
-        Remove-Item $installer
+        Start-Process $smartInstaller -ArgumentList "/SILENT" -Wait
     } else {
-        Write-Host "smartmontools уже установлен."
+        Write-Host "❌ Установщик smartmontools не найден: $smartInstaller" -ForegroundColor Red
     }
+} else {
+    Write-Host "✔ smartmontools уже установлен."
 }
 
-Install-PowerShell7
-Install-FIO
-Install-Smartmontools
-
-Write-Host "Все зависимости установлены."
+Write-Host "✅ Все зависимости проверены и установлены."
