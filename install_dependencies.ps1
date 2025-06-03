@@ -1,48 +1,69 @@
-$ErrorActionPreference = "Stop"
+# Пути к файлам
+$softPath = "$env:USERPROFILE\Desktop\SoftForTest"
+$psInstaller = "$softPath\PowerShell-7.5.0.msi"
+$fioInstaller = "$softPath\fio-3.39-x64.msi"
+$smartmontoolsInstaller = "$softPath\smartmontools-7.4-1.win32-setup.exe"
+$logPath = "$softPath\InstallLogs"
+$psLog = "$logPath\PowerShell_Install.log"
+$fioLog = "$logPath\FIO_Install.log"
+$smartmontoolsLog = "$logPath\Smartmontools_Install.log"
 
-# Абсолютный путь к папке SoftForTest внутри dist
-$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
-$softPath = Join-Path $scriptDir "SoftForTest"
-
-# Пути к локальным установщикам
-$pwshInstaller = Join-Path $softPath "PowerShell-7.5.0.msi"
-$fioInstaller = Join-Path $softPath "fio-3.36-x64.msi"
-$smartInstaller = Join-Path $softPath "smartmontools-7.4-1.win32-setup.exe"
-
-# Установка PowerShell
-if (-not (Test-Path "C:\Program Files\PowerShell\7\pwsh.exe")) {
-    if (Test-Path $pwshInstaller) {
-        Write-Host "Устанавливается PowerShell 7..."
-        Start-Process "msiexec.exe" -ArgumentList "/i `"$pwshInstaller`" /quiet /norestart" -Wait
-    } else {
-        Write-Host "❌ Установщик PowerShell не найден: $pwshInstaller" -ForegroundColor Red
-    }
-} else {
-    Write-Host "✔ PowerShell 7 уже установлен."
+# Создаем папку для логов
+if (-not (Test-Path $logPath)) {
+    New-Item -ItemType Directory -Path $logPath -Force | Out-Null
 }
 
-# Установка FIO
-if (-not (Test-Path "C:\Program Files\fio\fio.exe")) {
-    if (Test-Path $fioInstaller) {
-        Write-Host "Устанавливается FIO..."
-        Start-Process "msiexec.exe" -ArgumentList "/i `"$fioInstaller`" /quiet /norestart" -Wait
-    } else {
-        Write-Host "❌ Установщик FIO не найден: $fioInstaller" -ForegroundColor Red
-    }
-} else {
-    Write-Host "✔ FIO уже установлен."
+# Удаляем предыдущую версию PowerShell 7 (если есть)
+if (Test-Path "$env:ProgramFiles\PowerShell\7\pwsh.exe") {
+    Write-Host "Удаление предыдущей версии PowerShell 7..." -ForegroundColor Yellow
+    Start-Process "msiexec.exe" -ArgumentList "/x `"$psInstaller`" /quiet /norestart /log `"$logPath\PowerShell_Uninstall.log`"" -Wait
 }
 
-# Установка smartmontools
-if (-not (Test-Path "C:\Program Files\smartmontools\bin\smartctl.exe")) {
-    if (Test-Path $smartInstaller) {
-        Write-Host "Устанавливается smartmontools..."
-        Start-Process $smartInstaller -ArgumentList "/SILENT" -Wait
+# Устанавливаем PowerShell 7.5
+if (Test-Path $psInstaller) {
+    Write-Host "Установка PowerShell 7.5..." -ForegroundColor Cyan
+    $arguments = "/i `"$psInstaller`" /quiet /norestart /log `"$psLog`""
+    $process = Start-Process "msiexec.exe" -ArgumentList $arguments -Wait -PassThru
+
+    if ($process.ExitCode -eq 0) {
+        Write-Host "PowerShell 7.5 успешно установлено!" -ForegroundColor Green
     } else {
-        Write-Host "❌ Установщик smartmontools не найден: $smartInstaller" -ForegroundColor Red
+        Write-Host "Ошибка установки PowerShell 7.5 (код $($process.ExitCode)). Проверьте лог: $psLog" -ForegroundColor Red
     }
 } else {
-    Write-Host "✔ smartmontools уже установлен."
+    Write-Host "Файл PowerShell-7.5.0.msi не найден!" -ForegroundColor Red
 }
 
-Write-Host "✅ Все зависимости проверены и установлены."
+# Устанавливаем FIO
+if (Test-Path $fioInstaller) {
+    Write-Host "Установка FIO..." -ForegroundColor Cyan
+    $arguments = "/i `"$fioInstaller`" /quiet /norestart /log `"$fioLog`""
+    $process = Start-Process "msiexec.exe" -ArgumentList $arguments -Wait -PassThru
+
+    if ($process.ExitCode -eq 0) {
+        Write-Host "FIO успешно установлено!" -ForegroundColor Green
+    } else {
+        Write-Host "Ошибка установки FIO (код $($process.ExitCode)). Проверьте лог: $fioLog" -ForegroundColor Red
+    }
+} else {
+    Write-Host "Файл fio-3.39-x64.msi не найден!" -ForegroundColor Red
+}
+
+# Устанавливаем Smartmontools
+if (Test-Path $smartmontoolsInstaller) {
+    Write-Host "Установка Smartmontools..." -ForegroundColor Cyan
+    $process = Start-Process -FilePath $smartmontoolsInstaller -ArgumentList "/S" -Wait -PassThru
+    
+    if ($process.ExitCode -eq 0) {
+        Write-Host "Smartmontools успешно установлен!" -ForegroundColor Green
+        # Записываем успешную установку в лог
+        "Установка завершена успешно. Код выхода: $($process.ExitCode)" | Out-File -FilePath $smartmontoolsLog -Encoding UTF8
+    } else {
+        Write-Host "Ошибка установки Smartmontools (код $($process.ExitCode))" -ForegroundColor Red
+        "Ошибка установки. Код выхода: $($process.ExitCode)" | Out-File -FilePath $smartmontoolsLog -Encoding UTF8
+    }
+} else {
+    Write-Host "Файл smartmontools-7.4-1.win32-setup.exe не найден!" -ForegroundColor Red
+}
+
+Write-Host "Логи сохранены: $psLog, $fioLog, $smartmontoolsLog" -ForegroundColor Yellow

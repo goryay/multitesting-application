@@ -6,6 +6,7 @@ import win32com.client
 from mss import mss
 from PIL import Image, ImageStat
 
+
 # Проверка, отрисован ли график в нижней части окна AIDA64
 def is_chart_drawn(img):
     width, height = img.size
@@ -13,6 +14,7 @@ def is_chart_drawn(img):
     stat = ImageStat.Stat(bottom_crop)
     avg = stat.mean
     return not (avg[0] < 10 and avg[1] < 10 and avg[2] < 10)
+
 
 # Ожидание полной отрисовки окна AIDA64
 def wait_for_aida_ready(sct, rect, max_wait=10):
@@ -31,6 +33,7 @@ def wait_for_aida_ready(sct, rect, max_wait=10):
     print("[AIDA64] Предупреждение: окно возможно не отрисовано полностью.")
     return img
 
+
 TARGET_KEYWORDS = [
     "aida64", "System Stability Test",
     "furmark", "fio", "fio.exe", "console",
@@ -41,8 +44,9 @@ MIN_WIDTH = 300
 MIN_HEIGHT = 200
 
 # Использовать фиксированные имена для перезаписи
-SCREENSHOT_SLOTS = ["middle", "end", "after"]
+SCREENSHOT_SLOTS = ["start", "middle", "end", "final"]
 current_slot_index = 0
+
 
 def get_report_directory():
     desktop = os.path.join(os.environ["USERPROFILE"], "Desktop")
@@ -50,6 +54,7 @@ def get_report_directory():
     report_directory = os.path.join(desktop, "Report", computer_name)
     os.makedirs(report_directory, exist_ok=True)
     return report_directory
+
 
 def safe_capture(hwnd, folder):
     global current_slot_index
@@ -59,7 +64,7 @@ def safe_capture(hwnd, folder):
     title = win32gui.GetWindowText(hwnd).strip()
 
     if "aida64 business" in title.lower():
-        print(f"Пропуск: '{title}' имеет неподдерживаемый формат окна.")
+        print(f"[AIDA64] Обнаружено окно Business Edition: '{title}' — продолжаю.")
         return
 
     if not any(keyword.lower() in title.lower() for keyword in TARGET_KEYWORDS):
@@ -110,6 +115,7 @@ def safe_capture(hwnd, folder):
     except Exception as e:
         print(f"Ошибка при работе с окном '{title}': {e}")
 
+
 def capture_test_windows():
     print("Получение списка окон тестирования...")
     folder = get_report_directory()
@@ -135,6 +141,7 @@ def capture_test_windows():
         safe_capture(hwnd, folder)
 
     print("Скриншоты окон тестирования успешно сделаны.")
+
 
 if __name__ == "__main__":
     print("Ожидание перед началом захвата окон...")

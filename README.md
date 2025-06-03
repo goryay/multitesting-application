@@ -73,7 +73,7 @@ MWR (Multi-Workload Runner) — это десктопное приложение
   --hidden-import pytweening `
   --hidden-import mouseinfo `
   --hidden-import pyperclip `
-  --hidden-import pillow `
+  --hidden-import PIL `
   --hidden-import psutil
 
 ```
