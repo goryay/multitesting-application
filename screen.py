@@ -43,9 +43,15 @@ TARGET_KEYWORDS = [
 MIN_WIDTH = 300
 MIN_HEIGHT = 200
 
-# Использовать фиксированные имена для перезаписи
-SCREENSHOT_SLOTS = ["start", "middle", "end", "final"]
-current_slot_index = 0
+
+def get_unique_filename(folder, base_filename):
+    name, ext = os.path.splitext(base_filename)
+    counter = 1
+    full_path = os.path.join(folder, base_filename)
+    while os.path.exists(full_path):
+        full_path = os.path.join(folder, f"{name}_{counter}{ext}")
+        counter += 1
+    return full_path
 
 
 def get_report_directory():
@@ -102,12 +108,10 @@ def safe_capture(hwnd, folder):
                 screenshot = sct.grab(monitor)
                 image = Image.frombytes("RGB", (screenshot.width, screenshot.height), screenshot.rgb)
 
-        slot = SCREENSHOT_SLOTS[min(current_slot_index, len(SCREENSHOT_SLOTS) - 1)]
         safe_title = "".join(c if c.isalnum() or c in " _-" else "_" for c in title)
-        filename = f"{safe_title}_{slot}.png"
-        current_slot_index += 1
+        filename = f"{safe_title}.png"
 
-        path = os.path.join(folder, filename)
+        path = get_unique_filename(folder, filename)
         image.save(path)
 
         print(f"Скриншот окна '{title}' сохранён как: {filename}")

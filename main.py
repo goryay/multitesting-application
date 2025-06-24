@@ -186,6 +186,22 @@ class TestLauncherApp:
         args.append(duration)
 
         duration_seconds = int(duration) * 60
+
+        def hourly_screenshot_loop(total_duration):
+            interval = 3600  # 1 час
+            elapsed = interval  # первый снимок через 1 час
+            while elapsed < total_duration:
+                time.sleep(interval)
+                try:
+                    exe_path = sys.executable if is_frozen() else os.path.abspath("main.py")
+                    subprocess.Popen([exe_path, "--screen"], shell=True)
+                    print(f"[СКРИН] Ежечасный скриншот сделан (спустя {elapsed // 60} мин)")
+                except Exception as e:
+                    print(f"Ошибка при попытке сделать ежечасный скриншот: {e}")
+                elapsed += interval
+
+        threading.Thread(target=hourly_screenshot_loop, args=(duration_seconds,), daemon=True).start()
+
         half_duration = duration_seconds // 2
         near_end = max(5, duration_seconds - 30)
         pwsh_path = r'C:\Program Files\PowerShell\7\pwsh.exe'
