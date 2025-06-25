@@ -1,5 +1,6 @@
+$base = $PSScriptRoot  # путь к папке скрипта
 # Пути к файлам
-$softPath = "$env:USERPROFILE\Desktop\SoftForTest"
+$softPath = Join-Path $PSScriptRoot "SoftForTest"
 $psInstaller = "$softPath\PowerShell-7.5.0.msi"
 $fioInstaller = "$softPath\fio-3.39-x64.msi"
 $smartmontoolsInstaller = "$softPath\smartmontools-7.4-1.win32-setup.exe"
