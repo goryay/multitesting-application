@@ -62,8 +62,7 @@ def get_report_directory():
     return report_directory
 
 
-def safe_capture(hwnd, folder):
-    global current_slot_index
+def safe_capture(hwnd, folder, hourly=False):
     if not win32gui.IsWindowVisible(hwnd):
         return
 
@@ -109,18 +108,17 @@ def safe_capture(hwnd, folder):
                 image = Image.frombytes("RGB", (screenshot.width, screenshot.height), screenshot.rgb)
 
         safe_title = "".join(c if c.isalnum() or c in " _-" else "_" for c in title)
-        filename = f"{safe_title}.png"
+        filename = f"{safe_title}_hourly.png" if hourly else f"{safe_title}.png"
+        path = os.path.join(folder, filename)
 
-        path = get_unique_filename(folder, filename)
         image.save(path)
-
         print(f"Скриншот окна '{title}' сохранён как: {filename}")
 
     except Exception as e:
         print(f"Ошибка при работе с окном '{title}': {e}")
 
 
-def capture_test_windows():
+def capture_test_windows(hourly=False):
     print("Получение списка окон тестирования...")
     folder = get_report_directory()
     hwnds = []
@@ -142,7 +140,7 @@ def capture_test_windows():
     hwnds_sorted = sorted(hwnds, key=window_priority)
 
     for hwnd in hwnds_sorted:
-        safe_capture(hwnd, folder)
+        safe_capture(hwnd, folder, hourly)
 
     print("Скриншоты окон тестирования успешно сделаны.")
 
@@ -150,4 +148,4 @@ def capture_test_windows():
 if __name__ == "__main__":
     print("Ожидание перед началом захвата окон...")
     time.sleep(15)
-    capture_test_windows()
+    capture_test_windows(hourly=False)

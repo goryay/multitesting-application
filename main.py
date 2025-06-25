@@ -1,9 +1,10 @@
 import sys
+import screen
 
 if "--screen" in sys.argv:
-    import screen
+    hourly = "--hourly" in sys.argv
 
-    screen.capture_test_windows()
+    screen.capture_test_windows(hourly=hourly)
     sys.exit()
 
 import tkinter as tk
@@ -12,8 +13,9 @@ import subprocess
 import os
 import psutil
 import time
-import screen
 import threading
+import ctypes
+import shutil
 
 import pyautogui
 from datetime import datetime
@@ -46,7 +48,6 @@ def install_dependencies_if_needed():
             raise FileNotFoundError(f"Не найден скрипт установки: {script_path}")
 
 
-# Вставить в main.py
 install_dependencies_if_needed()
 
 
@@ -60,6 +61,9 @@ class TestLauncherApp:
         self.time_choice = tk.StringVar(value="3")
         self.custom_time = tk.StringVar(value="")
         self.gpu2_enabled = tk.BooleanVar(value=False)
+        self.custom_hours = tk.StringVar(value="0")
+        self.custom_minutes = tk.StringVar(value="0")
+
         self.selected_disks = []
 
         self.checkbuttons = []
@@ -97,8 +101,22 @@ class TestLauncherApp:
             tk.Radiobutton(self.root, text=text, variable=self.time_choice, value=val,
                            command=self.toggle_custom).pack(anchor="w", padx=20)
 
-        self.custom_time_entry = tk.Entry(self.root, textvariable=self.custom_time, state="disabled")
-        self.custom_time_entry.pack(pady=5)
+        # Создаём поля для часов и минут
+        custom_time_frame = tk.Frame(self.root)
+        custom_time_frame.pack()
+
+        tk.Label(custom_time_frame, text="Часы:").grid(row=0, column=0)
+        self.custom_hours = tk.IntVar(value=0)
+        self.custom_hours_spin = tk.Spinbox(custom_time_frame, from_=0, to=24, width=5, textvariable=self.custom_hours,
+                                            state="disabled")
+        self.custom_hours_spin.grid(row=0, column=1)
+
+        # tk.Label(custom_time_frame, text="Минуты:").grid(row=0, column=2)
+        # self.custom_minutes = tk.IntVar(value=0)
+        # self.custom_minutes_spin = tk.Spinbox(custom_time_frame, from_=0, to=59, width=5,
+        #                                       textvariable=self.custom_minutes, state="disabled")
+        # self.custom_minutes_spin.grid(row=0, column=3)
+
 
         self.disk_frame = tk.LabelFrame(self.root, text="Выберите диски для FIO:")
         self.disk_frame.pack(pady=10, fill="x", padx=10)
@@ -107,13 +125,13 @@ class TestLauncherApp:
         tk.Button(self.root, text="Запустить тест", command=self.run_test).pack(pady=10)
         tk.Button(self.root, text="Сделать скриншот", command=self.take_screenshot).pack(pady=5)
         tk.Button(self.root, text="Создать отчёт", command=self.generate_report).pack(pady=5)
+        tk.Button(self.root, text="Удалить установленные компоненты", command=self.run_uninstall_script).pack(pady=5)
         tk.Button(self.root, text="Выход", command=self.root.quit).pack(pady=5)
 
     def toggle_custom(self):
-        if self.time_choice.get() == "6":
-            self.custom_time_entry.config(state="normal")
-        else:
-            self.custom_time_entry.config(state="disabled")
+        state = "normal" if self.time_choice.get() == "6" else "disabled"
+        self.custom_hours_spin.config(state=state)
+        # self.custom_minutes_spin.config(state=state)
 
     def populate_disks(self):
         for widget in self.disk_frame.winfo_children():
@@ -122,12 +140,40 @@ class TestLauncherApp:
         self.checkbuttons.clear()
         self.check_vars.clear()
 
+        def get_drive_info(path):
+            volume_name_buf = ctypes.create_unicode_buffer(1024)
+            fs_name_buf = ctypes.create_unicode_buffer(1024)
+            try:
+                ctypes.windll.kernel32.GetVolumeInformationW(
+                    ctypes.c_wchar_p(path),
+                    volume_name_buf,
+                    ctypes.sizeof(volume_name_buf),
+                    None, None, None,
+                    fs_name_buf,
+                    ctypes.sizeof(fs_name_buf)
+                )
+                return volume_name_buf.value
+            except:
+                return "Без имени"
+
         for part in psutil.disk_partitions():
             if "cdrom" in part.opts or not os.path.exists(part.mountpoint):
                 continue
             var = tk.BooleanVar()
             dev = part.device.rstrip(":\\")
-            cb = tk.Checkbutton(self.disk_frame, text=f"{dev} ({part.mountpoint})", variable=var)
+            try:
+                label = get_drive_info(part.device)
+            except Exception:
+                label = "Без имени"
+
+            try:
+                total = shutil.disk_usage(part.mountpoint).total
+                size_gb = f"{total // (1024 ** 3)} GB"
+            except:
+                size_gb = "?"
+
+            display_name = f"{dev}: ({label}, {size_gb})"
+            cb = tk.Checkbutton(self.disk_frame, text=display_name, variable=var)
             cb.pack(anchor="w")
             self.checkbuttons.append(cb)
             self.check_vars.append((var, dev))
@@ -169,10 +215,16 @@ class TestLauncherApp:
             args.extend([d[0] for d in self.selected_disks])
 
         if self.time_choice.get() == "6":
-            if not self.custom_time.get().isdigit():
-                messagebox.showerror("Ошибка", "Введите корректное число минут")
+            try:
+                hours = int(self.custom_hours.get())
+                minutes = int(self.custom_minutes.get())
+                duration = str(hours * 60 + minutes)
+                if int(duration) <= 0:
+                    raise ValueError
+            except ValueError:
+                messagebox.showerror("Ошибка", "Введите корректное количество часов и минут")
                 return
-            duration = self.custom_time.get()
+
         else:
             time_map = {
                 "1": "10",
@@ -194,7 +246,7 @@ class TestLauncherApp:
                 time.sleep(interval)
                 try:
                     exe_path = sys.executable if is_frozen() else os.path.abspath("main.py")
-                    subprocess.Popen([exe_path, "--screen"], shell=True)
+                    subprocess.Popen([exe_path, "--screen", "--hourly"], shell=True)
                     print(f"[СКРИН] Ежечасный скриншот сделан (спустя {elapsed // 60} мин)")
                 except Exception as e:
                     print(f"Ошибка при попытке сделать ежечасный скриншот: {e}")
@@ -217,7 +269,7 @@ class TestLauncherApp:
             def screenshot_after_delay(delay_sec):
                 time.sleep(delay_sec)
                 exe_path = sys.executable if is_frozen() else os.path.abspath("main.py")
-                subprocess.Popen([exe_path, "--screen"], shell=True)
+                subprocess.Popen([exe_path, "--screen", "--hourly"], shell=True)
 
             # screen.capture_test_windows()
             # Один ближе к середине, один в самом конце, один — через 5 секунд после завершения (последний результат FIO)
@@ -227,6 +279,17 @@ class TestLauncherApp:
 
         except Exception as e:
             print(f"Ошибка вызова screen.capture_test_windows(): {e}")
+
+    def run_uninstall_script(self):
+        try:
+            script_path = os.path.abspath("AllUnin.ps1")
+            pwsh_path = r"C:\Program Files\PowerShell\7\pwsh.exe"
+            subprocess.run([pwsh_path, "-ExecutionPolicy", "Bypass", "-File", script_path], check=True)
+            messagebox.showinfo("Готово", "Удаление завершено.")
+        except subprocess.CalledProcessError as e:
+            messagebox.showerror("Ошибка", f"Сценарий удаления вернул ошибку:\n{e}")
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Ошибка при запуске удаления:\n{e}")
 
     def take_screenshot(self):
         now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -260,7 +323,6 @@ class TestLauncherApp:
             subprocess.Popen([pwsh_path, "-ExecutionPolicy", "Bypass", "-Command", ps_aida])
 
             # 2. Скриншот
-
             try:
                 screen.capture_test_windows()
             except Exception as e:
