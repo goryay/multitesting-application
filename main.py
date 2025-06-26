@@ -117,7 +117,6 @@ class TestLauncherApp:
         #                                       textvariable=self.custom_minutes, state="disabled")
         # self.custom_minutes_spin.grid(row=0, column=3)
 
-
         self.disk_frame = tk.LabelFrame(self.root, text="Выберите диски для FIO:")
         self.disk_frame.pack(pady=10, fill="x", padx=10)
         self.populate_disks()
@@ -257,7 +256,8 @@ class TestLauncherApp:
         half_duration = duration_seconds // 2
         near_end = max(5, duration_seconds - 30)
         pwsh_path = r'C:\Program Files\PowerShell\7\pwsh.exe'
-        script_full_path = os.path.abspath("aida_fio_furmark.ps1")
+        script_full_path = os.path.join(getattr(sys, "_MEIPASS", os.path.dirname(sys.executable)),
+                                        "aida_fio_furmark.ps1")
         cmd = f'"{pwsh_path}" -ExecutionPolicy Bypass -File "{script_full_path}" {" ".join(args)}'
 
         # Автоматический вызов скриншотов
@@ -282,7 +282,7 @@ class TestLauncherApp:
 
     def run_uninstall_script(self):
         try:
-            script_path = os.path.abspath("AllUnin.ps1")
+            script_path = os.path.join(getattr(sys, "_MEIPASS", os.path.dirname(sys.executable)), "AllUnin.ps1")
             pwsh_path = r"C:\Program Files\PowerShell\7\pwsh.exe"
             subprocess.run([pwsh_path, "-ExecutionPolicy", "Bypass", "-File", script_path], check=True)
             messagebox.showinfo("Готово", "Удаление завершено.")
@@ -309,8 +309,9 @@ class TestLauncherApp:
             os.makedirs(report_dir, exist_ok=True)
 
             aida_path = os.path.abspath("SoftForTest\\AIDA64\\AIDA64Port.exe")
-            script_path = os.path.abspath("aida_fio_furmark.ps1")
-            smart_script = os.path.abspath("smart.ps1")
+            script_path = os.path.join(getattr(sys, "_MEIPASS", os.path.dirname(sys.executable)),
+                                       "aida_fio_furmark.ps1")
+            smart_script = os.path.join(getattr(sys, "_MEIPASS", os.path.dirname(sys.executable)), "smart.ps1")
             pwsh_path = r"C:\Program Files\PowerShell\7\pwsh.exe"
 
             # 1. Генерация отчета AIDA64 (асинхронно)
