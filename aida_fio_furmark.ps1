@@ -1,13 +1,7 @@
 function Start-ScreenScript {
-    $pythonExe = Join-Path -Path $PSScriptRoot -ChildPath "main.exe"
-    if (Test-Path $pythonExe) {
-        Start-Process -FilePath $pythonExe -ArgumentList "--screen"
-    } else {
-        Write-Host "main.exe не найден: $pythonExe"
-    }
+    $mainPath = [System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
+    Start-Process -FilePath $mainPath -ArgumentList "--screen"
 }
-
-
 
 # Относительные пути (относительно директории скрипта)
 $aida64Path = ".\SoftForTest\AIDA64\AIDA64Port.exe"
@@ -36,15 +30,14 @@ function Start-AidaTest
     Start-Process -FilePath $aida64FullPath -ArgumentList $params -PassThru
 }
 
-function Start-FurMarkTest
-{
+function Start-FurMarkTest {
     param([double]$hours, [int]$gpuCount)
+
     $seconds = [math]::Round($hours * 3600)
     $resolution = "1920x1080"
-    $demo = "furmark-gl"  # Используем стабильный OpenGL-режим
+    $demo = "furmark-vk"  # Используем Vulkan-режим, так как он работает с --gpu-index
 
-    if ($gpuCount -eq 1)
-    {
+    if ($gpuCount -eq 1) {
         $params = @(
             "--demo $demo",
             "--fullscreen",
@@ -57,8 +50,7 @@ function Start-FurMarkTest
         $cmd = "cmd /k `"`"$furMarkFullPath`" $( $params -join ' ' ) & pause`""
         Start-Process cmd.exe -ArgumentList "/c", $cmd
     }
-    else
-    {
+    else {
         $params1 = @(
             "--demo $demo",
             "--fullscreen",
@@ -83,7 +75,6 @@ function Start-FurMarkTest
         Start-Process cmd.exe -ArgumentList "/c", $cmd
     }
 }
-
 
 function Start-FioTest
 {
@@ -225,8 +216,8 @@ if ($args.Count -ge 2)
         Start-Sleep -Seconds 5
         Start-ScreenScript  # Скриншот после AIDA
 
-        $exePath = Join-Path $PSScriptRoot "main.exe"
-        Start-Process -FilePath $exePath -ArgumentList "--screen"
+        Start-ScreenScript
+
         Start-Sleep -Seconds 7
 
     }
