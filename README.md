@@ -65,6 +65,7 @@ MWR (Multi-Workload Runner) — это десктопное приложение
   --add-data "aida_fio_furmark.ps1;." `
   --add-data "install_dependencies.ps1;." `
   --add-data "smart.ps1;." `
+  --add-data "AllUnin.ps1;." `
   --hidden-import pyautogui `
   --hidden-import pygetwindow `
   --hidden-import pyscreeze `
@@ -77,8 +78,19 @@ MWR (Multi-Workload Runner) — это десктопное приложение
   --hidden-import psutil
 
 ```
+OR
+```bash
+pyinstaller --noconfirm --onefile --windowed `
+    --add-data "screen.py;." `
+    --add-data "aida_fio_furmark.ps1;." `
+    --add-data "smart.ps1;." `
+    --add-data "AllUnin.ps1;." `
+    --add-data "install_dependencies.ps1;." `
+    --add-data "SoftForTest;SoftForTest" `
+    main.py
+```
 
-5. После сборки:
+5. После сборки:[screen_hourly_handling.py](../../Downloads/screen_hourly_handling.py)
    - В папку `dist` **необходимо вручную добавить каталог `SoftForTest`**, содержащий AIDA64, FurMark и т.п.
    - В `dist` будет лежать `main.exe` — готовое к запуску приложение.
 
