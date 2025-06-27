@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 import win32gui
 import win32con
@@ -6,8 +7,19 @@ import win32com.client
 from mss import mss
 from PIL import Image, ImageStat
 
+# Ключевые слова для определения нужных окон
+TARGET_KEYWORDS = [
+    "aida64", "System Stability Test",
+    "furmark", "fio", "fio.exe", "console",
+    "cmd.exe", "pause", "Read-Write-test",
+    "AIDA64", "FurMark", "cmd.exe", "ConsoleWindowClass",
+    "System32\\cmd.exe", "C:\\Windows\\System32", "pwsh.exe"
+]
 
-# Проверка, отрисован ли график в нижней части окна AIDA64
+MIN_WIDTH = 300
+MIN_HEIGHT = 200
+
+
 def is_chart_drawn(img):
     width, height = img.size
     bottom_crop = img.crop((0, int(height * 2 / 3), width, height))
@@ -16,7 +28,6 @@ def is_chart_drawn(img):
     return not (avg[0] < 10 and avg[1] < 10 and avg[2] < 10)
 
 
-# Ожидание полной отрисовки окна AIDA64
 def wait_for_aida_ready(sct, rect, max_wait=10):
     for attempt in range(max_wait):
         screenshot = sct.grab(rect)
@@ -34,16 +45,6 @@ def wait_for_aida_ready(sct, rect, max_wait=10):
     return img
 
 
-TARGET_KEYWORDS = [
-    "aida64", "System Stability Test",
-    "furmark", "fio", "fio.exe", "console",
-    "cmd.exe", "pause", "Read-Write-test"
-]
-
-MIN_WIDTH = 300
-MIN_HEIGHT = 200
-
-
 def get_unique_filename(folder, base_filename):
     name, ext = os.path.splitext(base_filename)
     counter = 1
@@ -56,7 +57,7 @@ def get_unique_filename(folder, base_filename):
 
 def get_report_directory():
     desktop = os.path.join(os.environ["USERPROFILE"], "Desktop")
-    computer_name = os.environ["COMPUTERNAME"]
+    computer_name = os.environ.get("COMPUTERNAME", "Unknown")
     report_directory = os.path.join(desktop, "Report", computer_name)
     os.makedirs(report_directory, exist_ok=True)
     return report_directory
@@ -68,25 +69,25 @@ def safe_capture(hwnd, folder, hourly=False):
 
     title = win32gui.GetWindowText(hwnd).strip()
 
-    if "aida64 business" in title.lower():
-        print(f"[AIDA64] Обнаружено окно Business Edition: '{title}' — продолжаю.")
-        return
-
-    if not any(keyword.lower() in title.lower() for keyword in TARGET_KEYWORDS):
+    class_name = win32gui.GetClassName(hwnd).lower()
+    if not (
+            any(keyword.lower() in title.lower() for keyword in TARGET_KEYWORDS)
+            or class_name == "consolewindowclass"
+    ):
         return
 
     try:
         win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
         shell = win32com.client.Dispatch("WScript.Shell")
         shell.SendKeys('%')
-        time.sleep(15.5)
+        time.sleep(1.5)
 
         for _ in range(3):
             try:
                 win32gui.SetForegroundWindow(hwnd)
                 break
             except Exception:
-                time.sleep(15.5)
+                time.sleep(1.5)
 
         rect = win32gui.GetWindowRect(hwnd)
         x, y, x1, y1 = rect
@@ -100,7 +101,6 @@ def safe_capture(hwnd, folder, hourly=False):
         with mss() as sct:
             monitor = {"left": x, "top": y, "width": width, "height": height}
             if "System Stability Test" in title:
-                print(f"[AIDA64] Успешно: окно {width}x{height}")
                 image = wait_for_aida_ready(sct, monitor)
             else:
                 time.sleep(2.0)
@@ -125,7 +125,9 @@ def capture_test_windows(hourly=False):
 
     def enum_cb(hwnd, _):
         if win32gui.IsWindowVisible(hwnd):
-            hwnds.append(hwnd)
+            title = win32gui.GetWindowText(hwnd)
+            if any(keyword.lower() in title.lower() for keyword in TARGET_KEYWORDS):
+                hwnds.append(hwnd)
 
     win32gui.EnumWindows(enum_cb, None)
 
@@ -146,6 +148,6 @@ def capture_test_windows(hourly=False):
 
 
 if __name__ == "__main__":
-    print("Ожидание перед началом захвата окон...")
+    hourly = "--hourly" in sys.argv
     time.sleep(15)
-    capture_test_windows(hourly=False)
+    capture_test_windows(hourly=hourly)
