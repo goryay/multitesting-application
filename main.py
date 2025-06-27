@@ -303,15 +303,17 @@ class TestLauncherApp:
 
     def generate_report(self):
         try:
+            base_dir = os.path.dirname(__file__) if not is_frozen() else getattr(sys, "_MEIPASS",
+                                                                                 os.path.dirname(sys.executable))
+
             computer_name = os.environ.get("COMPUTERNAME", "Unknown")
             desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
             report_dir = os.path.join(desktop_path, "Report", computer_name)
             os.makedirs(report_dir, exist_ok=True)
 
             aida_path = os.path.abspath("SoftForTest\\AIDA64\\AIDA64Port.exe")
-            script_path = os.path.join(getattr(sys, "_MEIPASS", os.path.dirname(sys.executable)),
-                                       "aida_fio_furmark.ps1")
-            smart_script = os.path.join(getattr(sys, "_MEIPASS", os.path.dirname(sys.executable)), "smart.ps1")
+            script_path = os.path.join(base_dir, "aida_fio_furmark.ps1")
+            smart_script = os.path.join(base_dir, "smart.ps1")
             pwsh_path = r"C:\Program Files\PowerShell\7\pwsh.exe"
 
             # 1. Генерация отчета AIDA64 (асинхронно)
@@ -332,7 +334,8 @@ class TestLauncherApp:
 
             # 3. Генерация SMART-отчёта
             smart_output = os.path.join(report_dir, f"smart_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.txt")
-            subprocess.run([pwsh_path, "-ExecutionPolicy", "Bypass", "-File", smart_script, smart_output], check=True)
+            smart_command = f"& '{smart_script}' '{smart_output}'"
+            subprocess.run([pwsh_path, "-ExecutionPolicy", "Bypass", "-Command", smart_command], check=True)
 
             messagebox.showinfo("Успешно", f"Все отчёты и скриншоты сохранены в:\n{report_dir}")
 
