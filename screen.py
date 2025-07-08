@@ -6,6 +6,7 @@ import win32com.client
 from mss import mss
 from PIL import Image, ImageStat
 
+
 # Проверка, отрисован ли график в нижней части окна AIDA64
 def is_chart_drawn(img):
     width, height = img.size
@@ -14,7 +15,7 @@ def is_chart_drawn(img):
     avg = stat.mean
     return not (avg[0] < 10 and avg[1] < 10 and avg[2] < 10)
 
-# Ожидание полной отрисовки окна AIDA64
+
 def wait_for_aida_ready(sct, rect, max_wait=10):
     for attempt in range(max_wait):
         screenshot = sct.grab(rect)
@@ -31,6 +32,7 @@ def wait_for_aida_ready(sct, rect, max_wait=10):
     print("[AIDA64] Предупреждение: окно возможно не отрисовано полностью.")
     return img
 
+
 TARGET_KEYWORDS = [
     "aida64", "System Stability Test",
     "furmark", "fio", "fio.exe", "console",
@@ -40,9 +42,10 @@ TARGET_KEYWORDS = [
 MIN_WIDTH = 300
 MIN_HEIGHT = 200
 
-# Использовать фиксированные имена для перезаписи
+# Для финальных скриншотов
 SCREENSHOT_SLOTS = ["middle", "end", "after"]
 current_slot_index = 0
+
 
 def get_report_directory():
     desktop = os.path.join(os.environ["USERPROFILE"], "Desktop")
@@ -51,7 +54,8 @@ def get_report_directory():
     os.makedirs(report_directory, exist_ok=True)
     return report_directory
 
-def safe_capture(hwnd, folder):
+
+def safe_capture(hwnd, folder, autoscreen=False):
     global current_slot_index
     if not win32gui.IsWindowVisible(hwnd):
         return
@@ -97,20 +101,26 @@ def safe_capture(hwnd, folder):
                 screenshot = sct.grab(monitor)
                 image = Image.frombytes("RGB", (screenshot.width, screenshot.height), screenshot.rgb)
 
-        slot = SCREENSHOT_SLOTS[min(current_slot_index, len(SCREENSHOT_SLOTS) - 1)]
-        safe_title = "".join(c if c.isalnum() or c in " _-" else "_" for c in title)
-        filename = f"{safe_title}_{slot}.png"
-        current_slot_index += 1
+        if autoscreen:
+            # Одно имя для каждого ключевого окна (перезапись)
+            keyword = next((k for k in TARGET_KEYWORDS if k.lower() in title.lower()), "window")
+            safe_title = "".join(c if c.isalnum() or c in " _-" else "_" for c in keyword)
+            filename = f"{safe_title}_autoscreen.png"
+        else:
+            slot = SCREENSHOT_SLOTS[min(current_slot_index, len(SCREENSHOT_SLOTS) - 1)]
+            safe_title = "".join(c if c.isalnum() or c in " _-" else "_" for c in title)
+            filename = f"{safe_title}_{slot}.png"
+            current_slot_index += 1
 
         path = os.path.join(folder, filename)
         image.save(path)
-
         print(f"Скриншот окна '{title}' сохранён как: {filename}")
 
     except Exception as e:
         print(f"Ошибка при работе с окном '{title}': {e}")
 
-def capture_test_windows():
+
+def capture_test_windows(autoscreen=False):
     print("Получение списка окон тестирования...")
     folder = get_report_directory()
     hwnds = []
@@ -132,9 +142,10 @@ def capture_test_windows():
     hwnds_sorted = sorted(hwnds, key=window_priority)
 
     for hwnd in hwnds_sorted:
-        safe_capture(hwnd, folder)
+        safe_capture(hwnd, folder, autoscreen=autoscreen)
 
     print("Скриншоты окон тестирования успешно сделаны.")
+
 
 if __name__ == "__main__":
     print("Ожидание перед началом захвата окон...")

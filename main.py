@@ -1,16 +1,28 @@
+import psutil
 import sys
+import os
+
+def resource_path(relative_path):
+    """Get absolute path to resource, works for dev and for PyInstaller"""
+    if hasattr(sys, '_MEIPASS'):
+        return os.path.join(sys._MEIPASS, relative_path)
+    return os.path.abspath(relative_path)
+
+if "--autoscreen" in sys.argv:
+    import screen
+
+    screen.capture_test_windows(autoscreen=True)
+    sys.exit()
 
 if "--screen" in sys.argv:
     import screen
 
-    screen.capture_test_windows()
+    screen.capture_test_windows(autoscreen=False)
     sys.exit()
 
 import tkinter as tk
 from tkinter import messagebox
 import subprocess
-import os
-import psutil
 import time
 import screen
 import threading
@@ -46,7 +58,6 @@ def install_dependencies_if_needed():
             raise FileNotFoundError(f"Не найден скрипт установки: {script_path}")
 
 
-# Вставить в main.py
 install_dependencies_if_needed()
 
 
@@ -174,40 +185,52 @@ class TestLauncherApp:
                 return
             duration = self.custom_time.get()
         else:
-            time_map = {
-                "1": "10",
-                "2": "30",
-                "3": "60",
-                "4": "480",
-                "5": "720"
-            }
             duration = time_map.get(self.time_choice.get(), "60")
 
         args.append(duration)
 
         duration_seconds = int(duration) * 60
-        half_duration = duration_seconds // 2
-        near_end = max(5, duration_seconds - 30)
         pwsh_path = r'C:\Program Files\PowerShell\7\pwsh.exe'
-        script_full_path = os.path.abspath("aida_fio_furmark.ps1")
-        cmd = f'"{pwsh_path}" -ExecutionPolicy Bypass -File "{script_full_path}" {" ".join(args)}'
+        script_full_path = resource_path("aida_fio_furmark.ps1")
 
-        # Автоматический вызов скриншотов
         try:
-            subprocess.Popen([pwsh_path, "-ExecutionPolicy", "Bypass", "-File", script_full_path, *args])
+            logfile_path = os.path.join(os.path.dirname(sys.executable if is_frozen() else __file__),
+                                        "test_launcher_log.txt")
+            with open(logfile_path, "w") as logfile:
+                test_proc = subprocess.Popen(
+                    [pwsh_path, "-ExecutionPolicy", "Bypass", "-File", script_full_path, *args],
+                    stdout=logfile,
+                    stderr=subprocess.STDOUT,
+                    shell=False
+                )
+            #test_proc = subprocess.Popen([pwsh_path, "-ExecutionPolicy", "Bypass", "-File", script_full_path, *args])
+            time.sleep(30)  # Ждать появления окон
 
-            time.sleep(30)  # Подождать появления окон
+            stop_flag = threading.Event()
 
-            def screenshot_after_delay(delay_sec):
-                time.sleep(delay_sec)
+            def autoscreenshot_worker():
+                exe_path = sys.executable if is_frozen() else os.path.abspath("main.py")
+                hour = 3600
+                elapsed = 0
+                while not stop_flag.is_set() and elapsed < duration_seconds:
+                    to_sleep = min(hour, duration_seconds - elapsed)
+                    if to_sleep <= 0:
+                        break
+                    time.sleep(to_sleep)
+                    elapsed += to_sleep
+                    subprocess.Popen([exe_path, "--autoscreen"], shell=True)
+
+            autoscreen_thread = threading.Thread(target=autoscreenshot_worker, daemon=True)
+            autoscreen_thread.start()
+
+            def wait_and_final_screenshots():
+                test_proc.wait()
+                stop_flag.set()
+                time.sleep(2)
                 exe_path = sys.executable if is_frozen() else os.path.abspath("main.py")
                 subprocess.Popen([exe_path, "--screen"], shell=True)
 
-            # screen.capture_test_windows()
-            # Один ближе к середине, один в самом конце, один — через 5 секунд после завершения (последний результат FIO)
-            threading.Thread(target=screenshot_after_delay, args=(half_duration,), daemon=True).start()
-            threading.Thread(target=screenshot_after_delay, args=(near_end,), daemon=True).start()
-            threading.Thread(target=screenshot_after_delay, args=(duration_seconds + 5,), daemon=True).start()
+            threading.Thread(target=wait_and_final_screenshots, daemon=True).start()
 
         except Exception as e:
             print(f"Ошибка вызова screen.capture_test_windows(): {e}")
@@ -229,9 +252,9 @@ class TestLauncherApp:
             report_dir = os.path.join(desktop_path, "Report", computer_name)
             os.makedirs(report_dir, exist_ok=True)
 
-            aida_path = os.path.abspath("SoftForTest\\AIDA64\\AIDA64Port.exe")
-            script_path = os.path.abspath("aida_fio_furmark.ps1")
-            smart_script = os.path.abspath("smart.ps1")
+            aida_path = resource_path("SoftForTest\\AIDA64\\AIDA64Port.exe")
+            script_path = resource_path("aida_fio_furmark.ps1")
+            smart_script = resource_path("smart.ps1")
             pwsh_path = r"C:\Program Files\PowerShell\7\pwsh.exe"
 
             # 1. Генерация отчета AIDA64 (асинхронно)
@@ -244,7 +267,6 @@ class TestLauncherApp:
             subprocess.Popen([pwsh_path, "-ExecutionPolicy", "Bypass", "-Command", ps_aida])
 
             # 2. Скриншот
-
             try:
                 screen.capture_test_windows()
             except Exception as e:
