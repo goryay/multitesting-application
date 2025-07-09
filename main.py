@@ -204,7 +204,7 @@ class TestLauncherApp:
                     shell=False
                 )
             #test_proc = subprocess.Popen([pwsh_path, "-ExecutionPolicy", "Bypass", "-File", script_full_path, *args])
-            time.sleep(30)  # Ждать появления окон
+            time.sleep(45)  # Ждать появления окон
 
             stop_flag = threading.Event()
 

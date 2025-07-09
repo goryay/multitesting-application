@@ -1,15 +1,12 @@
 function Start-ScreenScript {
-    $pythonExe = Join-Path -Path $PSScriptRoot -ChildPath "main.exe"
-    if (Test-Path $pythonExe) {
-        Start-Process -FilePath $pythonExe -ArgumentList "--screen"
+    $mainExe = Join-Path -Path $PSScriptRoot -ChildPath "main.exe"
+    if (Test-Path $mainExe) {
+        Start-Process -FilePath $mainExe -ArgumentList "--screen"
     } else {
-        Write-Host "main.exe не найден: $pythonExe"
+        Write-Host "main.exe не найден: $mainExe"
     }
 }
 
-
-
-# Относительные пути (относительно директории скрипта)
 $aida64Path = ".\SoftForTest\AIDA64\AIDA64Port.exe"
 $furMarkPath = ".\SoftForTest\FurMark\furmark.exe"
 $fioPath = "C:\Program Files\fio\fio.exe"
@@ -18,33 +15,23 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $aida64FullPath = Join-Path -Path $scriptDir -ChildPath $aida64Path
 $furMarkFullPath = Join-Path -Path $scriptDir -ChildPath $furMarkPath
 
-# --- ФУНКЦИИ ---
-function Start-AidaTest
-{
+function Start-AidaTest {
     param([double]$hours, [bool]$includeGPU)
     $minutes = [math]::Round($hours * 60)
-    $gpuTest = if ($includeGPU)
-    {
-        ",GPU"
-    }
-    else
-    {
-        ""
-    }
+    $gpuTest = if ($includeGPU) { ",GPU" } else { "" }
     $params = @("/SST CPU,FPU,Cache,RAM,Disk$gpuTest", "/SSTDUR $minutes")
-    Write-Host "Запуск AIDA64: $( $params -join ' ' )"
-    Start-Process -FilePath $aida64FullPath -ArgumentList $params -PassThru
+    $cmd = "cmd /k `"`"$aida64FullPath`" $( $params -join ' ' ) & pause`""
+    $proc = Start-Process cmd.exe -ArgumentList "/c", $cmd -PassThru
+    return $proc
 }
 
-function Start-FurMarkTest
-{
+function Start-FurMarkTest {
     param([double]$hours, [int]$gpuCount)
     $seconds = [math]::Round($hours * 3600)
     $resolution = "1920x1080"
-    $demo = "furmark-gl"  # Используем стабильный OpenGL-режим
+    $demo = "furmark-vk"  # Используем Vulkan-режим для двух GPU
 
-    if ($gpuCount -eq 1)
-    {
+    if ($gpuCount -eq 1) {
         $params = @(
             "--demo $demo",
             "--fullscreen",
@@ -56,61 +43,42 @@ function Start-FurMarkTest
         )
         $cmd = "cmd /k `"`"$furMarkFullPath`" $( $params -join ' ' ) & pause`""
         Start-Process cmd.exe -ArgumentList "/c", $cmd
-    }
-    else
-    {
+    } else {
         $params1 = @(
-            "--demo $demo",
-            "--fullscreen",
+            "--demo $demo", "--fullscreen",
             "--width $( $resolution.Split('x')[0] )",
             "--height $( $resolution.Split('x')[1] )",
-            "--max-time $seconds",
-            "--no-score-box",
-            "--disable-demo-options",
-            "--gpu-index 0"
+            "--max-time $seconds", "--no-score-box", "--disable-demo-options", "--gpu-index 0"
         )
         $params2 = @(
-            "--demo $demo",
-            "--fullscreen",
+            "--demo $demo", "--fullscreen",
             "--width $( $resolution.Split('x')[0] )",
             "--height $( $resolution.Split('x')[1] )",
-            "--max-time $seconds",
-            "--no-score-box",
-            "--disable-demo-options",
-            "--gpu-index 1"
+            "--max-time $seconds", "--no-score-box", "--disable-demo-options", "--gpu-index 1"
         )
-        $cmd = "cmd /k `"start `"FurMark GPU 0`" `"$furMarkFullPath`" $( $params1 -join ' ' ) & start `"FurMark GPU 1`" `"$furMarkFullPath`" $( $params2 -join ' ' ) & pause`""
-        Start-Process cmd.exe -ArgumentList "/c", $cmd
+        # Важно: запускать два отдельных процесса с задержкой
+        $cmd1 = "cmd /k `"`"$furMarkFullPath`" $( $params1 -join ' ' ) & pause`""
+        $cmd2 = "cmd /k `"`"$furMarkFullPath`" $( $params2 -join ' ' ) & pause`""
+        Start-Process cmd.exe -ArgumentList "/c", $cmd1
+        Start-Sleep -Seconds 3  # ЗАДЕРЖКА!
+        Start-Process cmd.exe -ArgumentList "/c", $cmd2
     }
 }
 
-
-function Start-FioTest
-{
-    param(
-        [double]$hours,
-        [string[]]$selectedDrives  # <-- теперь принимаем список выбранных дисков
-    )
-
+function Start-FioTest {
+    param([double]$hours, [string[]]$selectedDrives)
     $seconds = [math]::Round($hours * 3600)
-
-    if (-not $selectedDrives)
-    {
+    if (-not $selectedDrives) {
         Write-Host "Диски для FIO не выбраны. Пропуск теста."
         return
     }
-
-    Write-Host "`nЗапуск FIO на дисках: $( $selectedDrives -join ', ' )"
-    foreach ($disk in $selectedDrives)
-    {
+    foreach ($disk in $selectedDrives) {
         $testDir = "${disk}:\fio_tests"
-        if (-not (Test-Path $testDir))
-        {
+        if (-not (Test-Path $testDir)) {
             New-Item -ItemType Directory -Path $testDir -Force | Out-Null
         }
         $testFile = "$testDir\fio_test_$([Guid]::NewGuid() ).dat"
         $configPath = "$env:TEMP\fio_config_$([Guid]::NewGuid() ).fio"
-
         $config = @"
 [global]
 ioengine=windowsaio
@@ -151,7 +119,7 @@ function Generate-Report {
     }
 
     try {
-        # Генерация отчета AIDA64 (без ожидания завершения)
+        # Генерация отчета AIDA64 (в фоне, не ждем завершения)
         Start-Process -FilePath $aida64FullPath -ArgumentList @(
             "/R `"$ReportPath`"",
             "/ALL", "/SUM", "/HW", "/SW", "/AUDIT", "/HTML"
@@ -164,11 +132,8 @@ function Generate-Report {
     }
 }
 
-
 # --- ОБРАБОТКА GUI АРГУМЕНТОВ ---
-# === GUI-режим ===
-if ($args.Count -ge 2)
-{
+if ($args.Count -ge 2) {
     $selectedTests = $args[0..($args.Count - 2)]
     $duration = $args[-1]
     $hours = [double]($duration) / 60
@@ -178,64 +143,38 @@ if ($args.Count -ge 2)
     $furMarkFullPath = Join-Path -Path $scriptDir -ChildPath ".\\SoftForTest\\FurMark\\furmark.exe"
     $fioPath = "C:\\Program Files\\fio\\fio.exe"
 
-    $gpuCount = if ($selectedTests -contains "GPU2")
-    {
-        2
-    }
-    else
-    {
-        1
-    }
+    $gpuCount = if ($selectedTests -contains "GPU2") { 2 } else { 1 }
+    $fioDrives = @()
+    foreach ($arg in $selectedTests) { if ($arg -match '^[A-Z]$') { $fioDrives += $arg } }
 
-    # Получаем список выбранных дисков
-    $fioDrives = $null
-    foreach ($arg in $selectedTests)
-    {
-        if ($arg -match '^[A-Z]$')
-        {
-            if (-not $fioDrives)
-            {
-                $fioDrives = @()
-            }
-            $fioDrives += $arg
-        }
-    }
+    # --- Параллельный запуск тестов ---
+    if ($selectedTests -contains "FIO") { Start-FioTest -hours $hours -selectedDrives $fioDrives; Start-Sleep -Seconds 1 }
+    if ($selectedTests -contains "FURMARK") { Start-FurMarkTest -hours $hours -gpuCount $gpuCount; Start-Sleep -Seconds 1 }
 
-    if ($selectedTests -contains "FIO")
-    {
-        Start-FioTest -hours $hours -selectedDrives $fioDrives
-    }
-
-    if ($selectedTests -contains "FURMARK")
-    {
-        Start-FurMarkTest -hours $hours -gpuCount $gpuCount
-    }
-
-    if ($selectedTests -contains "AIDA")
-    {
+    $aidaProc = $null
+    if ($selectedTests -contains "AIDA") {
         $includeGPU = -not ($selectedTests -contains "FURMARK")
-        $aidaProcess = Start-AidaTest -hours $hours -includeGPU $includeGPU
-
-        Start-Sleep -Seconds 5
-        Start-ScreenScript  # Скриншот во время AIDA
-
-        # Дождаться завершения AIDA64
-        $aidaProcess.WaitForExit()
-
-        Start-Sleep -Seconds 5
-        Start-ScreenScript  # Скриншот после AIDA
-
-        $exePath = Join-Path $PSScriptRoot "main.exe"
-        Start-Process -FilePath $exePath -ArgumentList "--screen"
-        Start-Sleep -Seconds 7
-
+        $aidaProc = Start-AidaTest -hours $hours -includeGPU $includeGPU
     }
 
-    Write-Host "Тестирование завершено. Нажмите Enter..."
-    Read-Host
+    $totalSeconds = [math]::Round($hours * 3600)
+    if ($selectedTests -contains "AIDA") {
+        $aida_delay = [math]::Max($totalSeconds - 15, 1)  # За 15 сек до конца теста
+        Start-Sleep -Seconds $aida_delay
+        Start-ScreenScript  # Скрин AIDA64!
+        Start-Sleep -Seconds 20  # Ждём окончание всех тестов
+    } else {
+        Start-Sleep -Seconds $totalSeconds
+    }
 
-    Start-Sleep -Seconds 5
+    Start-ScreenScript  # Финальный скрин (FIO, FurMark)
 
+    # Генерация отчёта AIDA64
+    $desktop = [Environment]::GetFolderPath("Desktop")
+    $computerName = $env:COMPUTERNAME
+    Generate-Report -computerName $computerName -desktopPath $desktop -aida64FullPath $aida64FullPath
+
+    Write-Host "Тестирование завершено. Скриншоты и отчёт сохранены."
     exit
 }
 

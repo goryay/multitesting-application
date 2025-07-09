@@ -61,32 +61,37 @@ def safe_capture(hwnd, folder, autoscreen=False):
         return
 
     title = win32gui.GetWindowText(hwnd).strip()
+    class_name = win32gui.GetClassName(hwnd).lower()
 
-    if "aida64 business" in title.lower():
-        print(f"Пропуск: '{title}' имеет неподдерживаемый формат окна.")
-        return
-
-    if not any(keyword.lower() in title.lower() for keyword in TARGET_KEYWORDS):
+    # Скринить все cmd.exe (консоли) + нужные заголовки
+    is_cmd = class_name == "consolewindowclass"
+    is_target = (
+        is_cmd or
+        "FurMark GPU 0" in title or "FurMark GPU 1" in title or
+        "FIO" in title or
+        "System Stability Test" in title or
+        any(keyword.lower() in title.lower() for keyword in TARGET_KEYWORDS)
+    )
+    if not is_target:
         return
 
     try:
         win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
         shell = win32com.client.Dispatch("WScript.Shell")
         shell.SendKeys('%')
-        time.sleep(15.5)
+        time.sleep(2.5 if is_cmd else 6.5)
 
         for _ in range(3):
             try:
                 win32gui.SetForegroundWindow(hwnd)
                 break
             except Exception:
-                time.sleep(15.5)
+                time.sleep(2.0)
 
         rect = win32gui.GetWindowRect(hwnd)
         x, y, x1, y1 = rect
         width = x1 - x
         height = y1 - y
-
         if width < MIN_WIDTH or height < MIN_HEIGHT:
             print(f"Пропуск: окно '{title}' слишком маленькое ({width}x{height})")
             return
@@ -97,20 +102,16 @@ def safe_capture(hwnd, folder, autoscreen=False):
                 print(f"[AIDA64] Успешно: окно {width}x{height}")
                 image = wait_for_aida_ready(sct, monitor)
             else:
-                time.sleep(2.0)
+                time.sleep(1.5 if is_cmd else 2.5)
                 screenshot = sct.grab(monitor)
                 image = Image.frombytes("RGB", (screenshot.width, screenshot.height), screenshot.rgb)
 
-        if autoscreen:
-            # Одно имя для каждого ключевого окна (перезапись)
-            keyword = next((k for k in TARGET_KEYWORDS if k.lower() in title.lower()), "window")
-            safe_title = "".join(c if c.isalnum() or c in " _-" else "_" for c in keyword)
-            filename = f"{safe_title}_autoscreen.png"
+        # Добавляем номер индекса, если это cmd.exe
+        if is_cmd:
+            safe_title = f"cmd_{hwnd}"
         else:
-            slot = SCREENSHOT_SLOTS[min(current_slot_index, len(SCREENSHOT_SLOTS) - 1)]
             safe_title = "".join(c if c.isalnum() or c in " _-" else "_" for c in title)
-            filename = f"{safe_title}_{slot}.png"
-            current_slot_index += 1
+        filename = f"{safe_title}_end.png"
 
         path = os.path.join(folder, filename)
         image.save(path)
@@ -131,11 +132,13 @@ def capture_test_windows(autoscreen=False):
 
     win32gui.EnumWindows(enum_cb, None)
 
+    # Для повторяемости - сортировать сначала System Stability Test, потом все cmd.exe, потом всё остальное
     def window_priority(h):
         title = win32gui.GetWindowText(h).lower()
+        class_name = win32gui.GetClassName(h).lower()
         if "system stability test" in title:
             return 0
-        if "pause" in title:
+        if class_name == "consolewindowclass":
             return 1
         return 2
 
