@@ -1,12 +1,16 @@
+from tabnanny import check
+
 import psutil
 import sys
 import os
+
 
 def resource_path(relative_path):
     """Get absolute path to resource, works for dev and for PyInstaller"""
     if hasattr(sys, '_MEIPASS'):
         return os.path.join(sys._MEIPASS, relative_path)
     return os.path.abspath(relative_path)
+
 
 if "--autoscreen" in sys.argv:
     import screen
@@ -26,6 +30,8 @@ import subprocess
 import time
 import screen
 import threading
+import ctypes
+import shutil
 
 import pyautogui
 from datetime import datetime
@@ -71,6 +77,8 @@ class TestLauncherApp:
         self.time_choice = tk.StringVar(value="3")
         self.custom_time = tk.StringVar(value="")
         self.gpu2_enabled = tk.BooleanVar(value=False)
+        self.custom_hour = tk.StringVar(value="0")
+
         self.selected_disks = []
 
         self.checkbuttons = []
@@ -108,8 +116,17 @@ class TestLauncherApp:
             tk.Radiobutton(self.root, text=text, variable=self.time_choice, value=val,
                            command=self.toggle_custom).pack(anchor="w", padx=20)
 
-        self.custom_time_entry = tk.Entry(self.root, textvariable=self.custom_time, state="disabled")
-        self.custom_time_entry.pack(pady=5)
+        custom_time_frame = tk.Frame(self.root)
+        custom_time_frame.pack()
+
+        tk.Label(custom_time_frame, text="Часы: ").grid(row=0, column=0)
+        self.custom_hour = tk.IntVar(value=0)
+        self.custom_hour_spin = tk.Spinbox(custom_time_frame, from_=0, to=360, width=5, state="disabled",
+                                           textvariable=self.custom_hour)
+        self.custom_hour_spin.grid(row=0, column=1)
+
+        # self.custom_time_entry = tk.Entry(self.root, textvariable=self.custom_time, state="disabled")
+        # self.custom_time_entry.pack(pady=5)
 
         self.disk_frame = tk.LabelFrame(self.root, text="Выберите диски для FIO:")
         self.disk_frame.pack(pady=10, fill="x", padx=10)
@@ -118,13 +135,12 @@ class TestLauncherApp:
         tk.Button(self.root, text="Запустить тест", command=self.run_test).pack(pady=10)
         tk.Button(self.root, text="Сделать скриншот", command=self.take_screenshot).pack(pady=5)
         tk.Button(self.root, text="Создать отчёт", command=self.generate_report).pack(pady=5)
+        tk.Button(self.root, text='Удалить установленные компоненты', command=self.run_uninstall_script).pack(pady=5)
         tk.Button(self.root, text="Выход", command=self.root.quit).pack(pady=5)
 
     def toggle_custom(self):
-        if self.time_choice.get() == "6":
-            self.custom_time_entry.config(state="normal")
-        else:
-            self.custom_time_entry.config(state="disabled")
+        state = 'normal' if self.time_choice.get() == '6' else 'disabled'
+        self.custom_hour_spin.config(state=state)
 
     def populate_disks(self):
         for widget in self.disk_frame.winfo_children():
@@ -203,7 +219,7 @@ class TestLauncherApp:
                     stderr=subprocess.STDOUT,
                     shell=False
                 )
-            #test_proc = subprocess.Popen([pwsh_path, "-ExecutionPolicy", "Bypass", "-File", script_full_path, *args])
+            # test_proc = subprocess.Popen([pwsh_path, "-ExecutionPolicy", "Bypass", "-File", script_full_path, *args])
             time.sleep(45)  # Ждать появления окон
 
             stop_flag = threading.Event()
@@ -234,6 +250,17 @@ class TestLauncherApp:
 
         except Exception as e:
             print(f"Ошибка вызова screen.capture_test_windows(): {e}")
+
+    def run_uninstall_script(self):
+        try:
+            script_path = os.path.join(getattr(sys, "_MEIPASS", os.path.dirname(sys.executable)), "AllUnin.ps1")
+            pwsh_path = r'C:\Program Files\PowerShell\7\pwsh.exe'
+            subprocess.run([pwsh_path, "-ExecutionPolicy", "Bypass", "-File", script_path], check=True)
+            messagebox.showinfo("Готово", "Удаление завершено.")
+        except subprocess.CalledProcessError as e:
+            messagebox.showerror('Ошибка', f'Сценарий удаления вернул ошибку:\n{e}')
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Ошибка при запуске:\n{e}")
 
     def take_screenshot(self):
         now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
