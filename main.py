@@ -121,7 +121,7 @@ class TestLauncherApp:
 
         tk.Label(custom_time_frame, text="Часы: ").grid(row=0, column=0)
         self.custom_hour = tk.IntVar(value=0)
-        self.custom_hour_spin = tk.Spinbox(custom_time_frame, from_=0, to=360, width=5, state="disabled",
+        self.custom_hour_spin = tk.Spinbox(custom_time_frame, from_=0, to=24, width=5, state="disabled",
                                            textvariable=self.custom_hour)
         self.custom_hour_spin.grid(row=0, column=1)
 
@@ -149,12 +149,52 @@ class TestLauncherApp:
         self.checkbuttons.clear()
         self.check_vars.clear()
 
+        # for part in psutil.disk_partitions():
+        #     if "cdrom" in part.opts or not os.path.exists(part.mountpoint):
+        #         continue
+        #     var = tk.BooleanVar()
+        #     dev = part.device.rstrip(":\\")
+        #     cb = tk.Checkbutton(self.disk_frame, text=f"{dev} ({part.mountpoint})", variable=var)
+        #     cb.pack(anchor="w")
+        #     self.checkbuttons.append(cb)
+        #     self.check_vars.append((var, dev))
+        #
+        # self.update_disk_checkboxes()
+
+        def get_drive_info(path):
+            volume_name_buf = ctypes.create_unicode_buffer(1024)
+            fs_name_buf = ctypes.create_unicode_buffer(1024)
+            try:
+                ctypes.windll.kernel32.GetVolumeInformationW(
+                    ctypes.c_wchar_p(path),
+                    volume_name_buf,
+                    ctypes.sizeof(volume_name_buf),
+                    None, None, None,
+                    fs_name_buf,
+                    ctypes.sizeof(fs_name_buf)
+                )
+                return volume_name_buf.value
+            except:
+                return "Без имени"
+
         for part in psutil.disk_partitions():
             if "cdrom" in part.opts or not os.path.exists(part.mountpoint):
                 continue
             var = tk.BooleanVar()
             dev = part.device.rstrip(":\\")
-            cb = tk.Checkbutton(self.disk_frame, text=f"{dev} ({part.mountpoint})", variable=var)
+            try:
+                label = get_drive_info(part.mountpoint)  # <--- исправлено!
+            except Exception:
+                label = "Без названия"
+
+            try:
+                total = shutil.disk_usage(part.mountpoint).total
+                size_gb = f"{total // (1024 ** 3)} GB"
+            except:
+                size_gb = "?"
+
+            display_name = f"{dev}: {label}, {size_gb}"
+            cb = tk.Checkbutton(self.disk_frame, text=display_name, variable=var)
             cb.pack(anchor="w")
             self.checkbuttons.append(cb)
             self.check_vars.append((var, dev))
@@ -211,15 +251,15 @@ class TestLauncherApp:
 
         try:
             logfile_path = os.path.join(os.path.dirname(sys.executable if is_frozen() else __file__),
-                                        "test_launcher_log.txt")
+                                    "test_launcher_log.txt")
             with open(logfile_path, "w") as logfile:
-                test_proc = subprocess.Popen(
+                    test_proc = subprocess.Popen(
                     [pwsh_path, "-ExecutionPolicy", "Bypass", "-File", script_full_path, *args],
                     stdout=logfile,
                     stderr=subprocess.STDOUT,
                     shell=False
                 )
-            # test_proc = subprocess.Popen([pwsh_path, "-ExecutionPolicy", "Bypass", "-File", script_full_path, *args])
+        # test_proc = subprocess.Popen([pwsh_path, "-ExecutionPolicy", "Bypass", "-File", script_full_path, *args])
             time.sleep(45)  # Ждать появления окон
 
             stop_flag = threading.Event()
@@ -251,6 +291,7 @@ class TestLauncherApp:
         except Exception as e:
             print(f"Ошибка вызова screen.capture_test_windows(): {e}")
 
+
     def run_uninstall_script(self):
         try:
             script_path = os.path.join(getattr(sys, "_MEIPASS", os.path.dirname(sys.executable)), "AllUnin.ps1")
@@ -262,6 +303,7 @@ class TestLauncherApp:
         except Exception as e:
             messagebox.showerror("Ошибка", f"Ошибка при запуске:\n{e}")
 
+
     def take_screenshot(self):
         now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         computer_name = os.environ.get("COMPUTERNAME", "Unknown")
@@ -271,6 +313,7 @@ class TestLauncherApp:
         path = os.path.join(base_path, f"screenshot_{now}.png")
         screenshot.save(path)
         print(f"Скриншот сохранён: {path}")
+
 
     def generate_report(self):
         try:
@@ -300,7 +343,7 @@ class TestLauncherApp:
                 print(f"Ошибка при запуске screen.py: {e}")
                 self.take_screenshot()
 
-            # 3. Генерация SMART-отчёта
+             # 3. Генерация SMART-отчёта
             smart_output = os.path.join(report_dir, f"smart_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.txt")
             subprocess.run([pwsh_path, "-ExecutionPolicy", "Bypass", "-File", smart_script, smart_output], check=True)
 
