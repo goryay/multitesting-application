@@ -71,7 +71,7 @@ class TestLauncherApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Меню тестирования")
-        self.root.geometry("500x1000")
+        self.root.geometry("523x1350")
 
         self.test_choice = tk.StringVar(value="1")
         self.time_choice = tk.StringVar(value="3")
