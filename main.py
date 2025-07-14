@@ -1,26 +1,19 @@
-from tabnanny import check
-
 import psutil
 import sys
 import os
 
-
 def resource_path(relative_path):
-    """Get absolute path to resource, works for dev and for PyInstaller"""
     if hasattr(sys, '_MEIPASS'):
         return os.path.join(sys._MEIPASS, relative_path)
     return os.path.abspath(relative_path)
 
-
 if "--autoscreen" in sys.argv:
     import screen
-
     screen.capture_test_windows(autoscreen=True)
     sys.exit()
 
 if "--screen" in sys.argv:
     import screen
-
     screen.capture_test_windows(autoscreen=False)
     sys.exit()
 
@@ -32,14 +25,13 @@ import screen
 import threading
 import ctypes
 import shutil
-
 import pyautogui
+import win32gui
+import win32con
 from datetime import datetime
-
 
 def is_frozen():
     return getattr(sys, 'frozen', False)
-
 
 def install_dependencies_if_needed():
     required_paths = [
@@ -47,12 +39,9 @@ def install_dependencies_if_needed():
         r"C:\Program Files\fio\fio.exe",
         r"C:\Program Files\smartmontools\bin\smartctl.exe"
     ]
-
     all_installed = all(os.path.exists(path) for path in required_paths)
-
     if not all_installed:
-        base_dir = getattr(sys, '_MEIPASS', os.path.dirname(sys.executable)) if is_frozen() else os.path.dirname(
-            __file__)
+        base_dir = getattr(sys, '_MEIPASS', os.path.dirname(sys.executable)) if is_frozen() else os.path.dirname(__file__)
         script_path = os.path.join(base_dir, "install_dependencies.ps1")
         if os.path.exists(script_path):
             subprocess.run([
@@ -63,9 +52,46 @@ def install_dependencies_if_needed():
         else:
             raise FileNotFoundError(f"Не найден скрипт установки: {script_path}")
 
-
 install_dependencies_if_needed()
 
+# --- ФУНКЦИИ для автоматического завершения тестов ---
+def activate_window_by_title(title_substr):
+    def callback(hwnd, result):
+        if win32gui.IsWindowVisible(hwnd):
+            text = win32gui.GetWindowText(hwnd)
+            if title_substr.lower() in text.lower():
+                result.append(hwnd)
+    hwnds = []
+    win32gui.EnumWindows(callback, hwnds)
+    if hwnds:
+        win32gui.ShowWindow(hwnds[0], win32con.SW_RESTORE)
+        win32gui.SetForegroundWindow(hwnds[0])
+        return True
+    return False
+
+def gracefully_finish_tests():
+    # FurMark: ищем окно и посылаем ESC
+    furmark_closed = False
+    if activate_window_by_title('FurMark'):
+        time.sleep(0.5)
+        pyautogui.press('esc')
+        furmark_closed = True
+        time.sleep(1)
+    # fio: ищем окно cmd.exe с fio и посылаем Ctrl+C
+    fio_closed = False
+    if activate_window_by_title('fio'):
+        time.sleep(0.5)
+        pyautogui.hotkey('ctrl', 'c')
+        fio_closed = True
+        time.sleep(1)
+    elif activate_window_by_title('cmd'):
+        time.sleep(0.5)
+        pyautogui.hotkey('ctrl', 'c')
+        fio_closed = True
+        time.sleep(1)
+    # дать время для появления окон-паузы и результатов
+    time.sleep(4)
+    print(f"FurMark closed: {furmark_closed}, fio closed: {fio_closed}")
 
 class TestLauncherApp:
     def __init__(self, root):
@@ -80,15 +106,18 @@ class TestLauncherApp:
         self.custom_hour = tk.StringVar(value="0")
 
         self.selected_disks = []
-
         self.checkbuttons = []
         self.check_vars = []
+
+        # Новое — для управления тестом
+        self.test_proc = None
+        self.stop_flag = None
+        self.autoscreen_thread = None
 
         self.create_widgets()
 
     def create_widgets(self):
         tk.Label(self.root, text="=== МЕНЮ ТЕСТИРОВАНИЯ ===", font=("Arial", 12, "bold")).pack(pady=10)
-
         tests = [
             ("1) Только AIDA64", "1"),
             ("2) AIDA64 + FurMark", "2"),
@@ -103,7 +132,6 @@ class TestLauncherApp:
             anchor="w", padx=20, pady=(0, 10))
 
         tk.Label(self.root, text="Выберите длительность теста:").pack()
-
         durations = [
             ("1) 10 минут", "1"),
             ("2) 30 минут", "2"),
@@ -118,21 +146,19 @@ class TestLauncherApp:
 
         custom_time_frame = tk.Frame(self.root)
         custom_time_frame.pack()
-
         tk.Label(custom_time_frame, text="Часы: ").grid(row=0, column=0)
         self.custom_hour = tk.IntVar(value=0)
         self.custom_hour_spin = tk.Spinbox(custom_time_frame, from_=0, to=24, width=5, state="disabled",
                                            textvariable=self.custom_hour)
         self.custom_hour_spin.grid(row=0, column=1)
 
-        # self.custom_time_entry = tk.Entry(self.root, textvariable=self.custom_time, state="disabled")
-        # self.custom_time_entry.pack(pady=5)
-
         self.disk_frame = tk.LabelFrame(self.root, text="Выберите диски для FIO:")
         self.disk_frame.pack(pady=10, fill="x", padx=10)
         self.populate_disks()
-
         tk.Button(self.root, text="Запустить тест", command=self.run_test).pack(pady=10)
+        # Новая кнопка завершения теста
+        self.stop_btn = tk.Button(self.root, text="Завершить тестирование", command=self.stop_test, state="disabled")
+        self.stop_btn.pack(pady=5)
         tk.Button(self.root, text="Сделать скриншот", command=self.take_screenshot).pack(pady=5)
         tk.Button(self.root, text="Создать отчёт", command=self.generate_report).pack(pady=5)
         tk.Button(self.root, text='Удалить установленные компоненты', command=self.run_uninstall_script).pack(pady=5)
@@ -145,22 +171,8 @@ class TestLauncherApp:
     def populate_disks(self):
         for widget in self.disk_frame.winfo_children():
             widget.destroy()
-
         self.checkbuttons.clear()
         self.check_vars.clear()
-
-        # for part in psutil.disk_partitions():
-        #     if "cdrom" in part.opts or not os.path.exists(part.mountpoint):
-        #         continue
-        #     var = tk.BooleanVar()
-        #     dev = part.device.rstrip(":\\")
-        #     cb = tk.Checkbutton(self.disk_frame, text=f"{dev} ({part.mountpoint})", variable=var)
-        #     cb.pack(anchor="w")
-        #     self.checkbuttons.append(cb)
-        #     self.check_vars.append((var, dev))
-        #
-        # self.update_disk_checkboxes()
-
         def get_drive_info(path):
             volume_name_buf = ctypes.create_unicode_buffer(1024)
             fs_name_buf = ctypes.create_unicode_buffer(1024)
@@ -176,29 +188,25 @@ class TestLauncherApp:
                 return volume_name_buf.value
             except:
                 return "Без имени"
-
         for part in psutil.disk_partitions():
             if "cdrom" in part.opts or not os.path.exists(part.mountpoint):
                 continue
             var = tk.BooleanVar()
             dev = part.device.rstrip(":\\")
             try:
-                label = get_drive_info(part.mountpoint)  # <--- исправлено!
+                label = get_drive_info(part.mountpoint)
             except Exception:
                 label = "Без названия"
-
             try:
                 total = shutil.disk_usage(part.mountpoint).total
                 size_gb = f"{total // (1024 ** 3)} GB"
             except:
                 size_gb = "?"
-
             display_name = f"{dev}: {label}, {size_gb}"
             cb = tk.Checkbutton(self.disk_frame, text=display_name, variable=var)
             cb.pack(anchor="w")
             self.checkbuttons.append(cb)
             self.check_vars.append((var, dev))
-
         self.update_disk_checkboxes()
 
     def update_disk_checkboxes(self):
@@ -214,7 +222,6 @@ class TestLauncherApp:
             "3": ["AIDA", "FURMARK", "FIO"],
             "4": ["AIDA", "FIO"]
         }
-
         time_map = {
             "1": "10",
             "2": "30",
@@ -222,19 +229,15 @@ class TestLauncherApp:
             "4": "480",
             "5": "720"
         }
-
         args = test_map.get(self.test_choice.get(), [])
-
         if self.gpu2_enabled.get():
             args.append("GPU2")
-
         if "FIO" in args:
             self.selected_disks = [dev for var, dev in self.check_vars if var.get()]
             if not self.selected_disks:
                 messagebox.showerror("Ошибка", "Выберите хотя бы один диск для теста FIO")
                 return
             args.extend([d[0] for d in self.selected_disks])
-
         if self.time_choice.get() == "6":
             custom_val = self.custom_hour.get()
             try:
@@ -247,33 +250,28 @@ class TestLauncherApp:
             duration = str(minutes)
         else:
             duration = time_map.get(self.time_choice.get(), "60")
-
         args.append(duration)
-
         duration_seconds = int(duration) * 60
         pwsh_path = r'C:\Program Files\PowerShell\7\pwsh.exe'
         script_full_path = resource_path("aida_fio_furmark.ps1")
-
         try:
-            logfile_path = os.path.join(os.path.dirname(sys.executable if is_frozen() else __file__),
-                                    "test_launcher_log.txt")
+            logfile_path = os.path.join(os.path.dirname(sys.executable if is_frozen() else __file__), "test_launcher_log.txt")
             with open(logfile_path, "w") as logfile:
-                    test_proc = subprocess.Popen(
+                self.test_proc = subprocess.Popen(
                     [pwsh_path, "-ExecutionPolicy", "Bypass", "-File", script_full_path, *args],
                     stdout=logfile,
                     stderr=subprocess.STDOUT,
                     shell=False
                 )
-        # test_proc = subprocess.Popen([pwsh_path, "-ExecutionPolicy", "Bypass", "-File", script_full_path, *args])
-            time.sleep(45)  # Ждать появления окон
-
-            stop_flag = threading.Event()
+            time.sleep(45)  # дать тестам стартануть, чтобы появились окна
+            self.stop_flag = threading.Event()
+            self.stop_btn.config(state="normal")  # активируем кнопку
 
             def autoscreenshot_worker():
                 exe_path = sys.executable if is_frozen() else os.path.abspath("main.py")
                 hour = 3600
                 elapsed = 0
-                while not stop_flag.is_set() and elapsed < duration_seconds:
+                while not self.stop_flag.is_set() and elapsed < duration_seconds:
                     to_sleep = min(hour, duration_seconds - elapsed)
                     if to_sleep <= 0:
                         break
@@ -281,21 +279,31 @@ class TestLauncherApp:
                     elapsed += to_sleep
                     subprocess.Popen([exe_path, "--autoscreen"], shell=True)
 
-            autoscreen_thread = threading.Thread(target=autoscreenshot_worker, daemon=True)
-            autoscreen_thread.start()
+            self.autoscreen_thread = threading.Thread(target=autoscreenshot_worker, daemon=True)
+            self.autoscreen_thread.start()
 
             def wait_and_final_screenshots():
-                test_proc.wait()
-                stop_flag.set()
+                self.test_proc.wait()
+                self.stop_flag.set()
+                self.stop_btn.config(state="disabled")
                 time.sleep(2)
                 exe_path = sys.executable if is_frozen() else os.path.abspath("main.py")
                 subprocess.Popen([exe_path, "--screen"], shell=True)
 
             threading.Thread(target=wait_and_final_screenshots, daemon=True).start()
-
         except Exception as e:
             print(f"Ошибка вызова screen.capture_test_windows(): {e}")
 
+    def stop_test(self):
+        # Корректно завершить FurMark/fio (через win32gui+pyautogui)
+        gracefully_finish_tests()
+        # После этого делаем финальные скрины (дать окнам появиться)
+        if self.stop_flag:
+            self.stop_flag.set()
+        self.stop_btn.config(state="disabled")
+        time.sleep(2)
+        exe_path = sys.executable if is_frozen() else os.path.abspath("main.py")
+        subprocess.Popen([exe_path, "--screen"], shell=True)
 
     def run_uninstall_script(self):
         try:
@@ -308,7 +316,6 @@ class TestLauncherApp:
         except Exception as e:
             messagebox.showerror("Ошибка", f"Ошибка при запуске:\n{e}")
 
-
     def take_screenshot(self):
         now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         computer_name = os.environ.get("COMPUTERNAME", "Unknown")
@@ -318,7 +325,6 @@ class TestLauncherApp:
         path = os.path.join(base_path, f"screenshot_{now}.png")
         screenshot.save(path)
         print(f"Скриншот сохранён: {path}")
-
 
     def generate_report(self):
         try:
@@ -348,7 +354,7 @@ class TestLauncherApp:
                 print(f"Ошибка при запуске screen.py: {e}")
                 self.take_screenshot()
 
-             # 3. Генерация SMART-отчёта
+            # 3. Генерация SMART-отчёта
             smart_output = os.path.join(report_dir, f"smart_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.txt")
             subprocess.run([pwsh_path, "-ExecutionPolicy", "Bypass", "-File", smart_script, smart_output], check=True)
 
@@ -358,7 +364,6 @@ class TestLauncherApp:
             messagebox.showerror("Ошибка", f"Команда вернула ошибку:\n{e}")
         except Exception as e:
             messagebox.showerror("Ошибка", f"Ошибка при создании отчета:\n{e}")
-
 
 if __name__ == '__main__':
     root = tk.Tk()
