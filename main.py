@@ -236,10 +236,15 @@ class TestLauncherApp:
             args.extend([d[0] for d in self.selected_disks])
 
         if self.time_choice.get() == "6":
-            if not self.custom_time.get().isdigit():
-                messagebox.showerror("Ошибка", "Введите корректное число минут")
+            custom_val = self.custom_hour.get()
+            try:
+                minutes = int(custom_val) * 60
+                if minutes <= 0:
+                    raise ValueError
+            except Exception:
+                messagebox.showerror("Ошибка", "Введите корректное число часов (больше 0)")
                 return
-            duration = self.custom_time.get()
+            duration = str(minutes)
         else:
             duration = time_map.get(self.time_choice.get(), "60")
 
