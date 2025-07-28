@@ -26,14 +26,14 @@ MWR (Multi-Workload Runner) — это десктопное приложение
 ## Установка и запуск:
 
 1. Установите необходимые библиотеки:
-   ```bash
+```bash
    pip install pillow gputil
-   ```
+```
 2. Скачайте или скопируйте файлы проекта.
 3. Запустите программу с помощью команды:
-   ```bash
+```bash
    python main.py
-   ```
+```
 
 ---
 
@@ -43,20 +43,20 @@ MWR (Multi-Workload Runner) — это десктопное приложение
 
 1. Убедитесь, что используется **64-битная версия Python 3.12**.  
    Проверка:
-   ```bash
+```bash
    python -c "import platform; print(platform.architecture())"
-   ```
+```
    Должен вернуть `('64bit', ...)`.
 
 2. Установите зависимости:
-   ```bash
+```bash
    pip install -r requirements.txt
-   ```
+```
 
 3. Установите `pyinstaller`:
-   ```bash
+```bash
    pip install pyinstaller
-   ```
+```
 
 4. Выполните сборку:
 ```bash
@@ -65,7 +65,6 @@ MWR (Multi-Workload Runner) — это десктопное приложение
   --add-data "aida_fio_furmark.ps1;." `
   --add-data "install_dependencies.ps1;." `
   --add-data "smart.ps1;." `
-  --add-data "AllUnin.ps1;." `
   --hidden-import pyautogui `
   --hidden-import pygetwindow `
   --hidden-import pyscreeze `
@@ -74,11 +73,11 @@ MWR (Multi-Workload Runner) — это десктопное приложение
   --hidden-import pytweening `
   --hidden-import mouseinfo `
   --hidden-import pyperclip `
-  --hidden-import PIL `
+  --hidden-import pillow `
   --hidden-import psutil
-
 ```
 OR
+
 ```bash
 pyinstaller --noconfirm --onefile --windowed `
     --add-data "screen.py;." `
@@ -90,7 +89,7 @@ pyinstaller --noconfirm --onefile --windowed `
     main.py
 ```
 
-5. После сборки:[screen_hourly_handling.py](../../Downloads/screen_hourly_handling.py)
+5. После сборки:
    - В папку `dist` **необходимо вручную добавить каталог `SoftForTest`**, содержащий AIDA64, FurMark и т.п.
    - В `dist` будет лежать `main.exe` — готовое к запуску приложение.
 
