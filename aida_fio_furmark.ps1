@@ -1,3 +1,6 @@
+Push-Location -LiteralPath $PSScriptRoot
+$script:__popOnExit = $true
+
 function Start-ScreenScript {
     $mainExe = Join-Path -Path $PSScriptRoot -ChildPath "main.exe"
     if (Test-Path $mainExe) {
@@ -176,6 +179,9 @@ if ($args.Count -ge 2) {
 
     Write-Host "Тестирование завершено. Скриншоты и отчёт сохранены."
     exit
+
 }
 
 Write-Host "Режим консоли активен. GUI не использовался."
+
+if ($script:__popOnExit) { Pop-Location }
