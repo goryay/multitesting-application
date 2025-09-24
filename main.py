@@ -1,54 +1,54 @@
-# -*- coding: utf-8 -*-
 import os, sys, json, time, psutil, ctypes, shutil, threading, subprocess
 from datetime import datetime
-
-
-# ===================== базовые утилиты/пути =====================
+import tkinter as tk
 
 def is_frozen() -> bool:
     return getattr(sys, "frozen", False)
 
-
 def resource_path(relative_path: str) -> str:
-    """
-    Абсолютный путь к ресурсу рядом с EXE (PyInstaller) или рядом со скриптом.
-    Не зависит от текущей директории.
-    """
     if hasattr(sys, "_MEIPASS"):
         base_dir = sys._MEIPASS
     else:
         base_dir = os.path.dirname(sys.executable) if is_frozen() else os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base_dir, relative_path)
 
+# --------- постоянные пути/файлы ---------
+APPDIR = os.path.join(os.environ.get("LOCALAPPDATA", os.getcwd()), "TestLauncher")
+os.makedirs(APPDIR, exist_ok=True)
+STATE_FILE = os.path.join(APPDIR, "test_state.json")
+LEGACY_STATE_FILE = os.path.join(os.path.expanduser("~"), "Desktop", "test_state.json")
+LOG_FILE = os.path.join(APPDIR, "resume.log")
 
-STATE_FILE = os.path.join(os.path.expanduser("~"), "Desktop", "test_state.json")
-
-# быстрые флаги скринера
-if "--autoscreen" in sys.argv:
-    import screen
-
-    screen.capture_test_windows(autoscreen=True)
+# ============= быстрые флаги скринера (до локера!) =============
+if "--autoscreen" in sys.argv or "--screen" in sys.argv:
+    try:
+        try:
+            import screen as screen_mod
+        except Exception:
+            import importlib.util
+            scr_path = resource_path("screen.py")
+            spec = importlib.util.spec_from_file_location("screen", scr_path)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)  # type: ignore
+            screen_mod = mod
+        screen_mod.capture_test_windows(autoscreen="--autoscreen" in sys.argv)
+    except Exception as e:
+        try:
+            with open(LOG_FILE, "a", encoding="utf-8") as f:
+                f.write(f"{datetime.now():%Y-%m-%d %H:%M:%S} [screen] fail: {e}\n")
+        except Exception:
+            pass
     sys.exit(0)
 
-if "--screen" in sys.argv:
-    import screen
-
-    screen.capture_test_windows(autoscreen=False)
-    sys.exit(0)
-
-
-# ===================== лог и зависимости =====================
-
+# ================= лог =================
 def log_resume(msg: str):
     try:
-        logdir = os.path.join(os.environ.get("LOCALAPPDATA", os.getcwd()), "TestLauncher")
-        os.makedirs(logdir, exist_ok=True)
-        with open(os.path.join(logdir, "resume.log"), "a", encoding="utf-8") as f:
+        with open(LOG_FILE, "a", encoding="utf-8") as f:
             f.write(f"{datetime.now():%Y-%m-%d %H:%M:%S} {msg}\n")
     except Exception:
         pass
 
-
+# ================= deps =================
 def install_dependencies_if_needed():
     req = [
         r"C:\Program Files\PowerShell\7\pwsh.exe",
@@ -64,67 +64,25 @@ def install_dependencies_if_needed():
     env["PATH"] = r"C:\Program Files\PowerShell\7;" + env.get("PATH", "")
     subprocess.run(["powershell.exe", "-ExecutionPolicy", "Bypass", "-File", script_path], check=True, env=env)
 
-
-# ===================== автозапуск: Task Scheduler + Run =====================
-
-def _user_domain_username() -> str:
-    ud = os.environ.get("USERDOMAIN") or os.environ.get("COMPUTERNAME") or ""
-    un = os.environ.get("USERNAME") or os.environ.get("USER") or ""
-    return f"{ud}\\{un}" if ud and un else (un or ".")
-
-
+# =============== автозапуск (HKCU\Run) ===============
 def _quoted(s: str) -> str:
     return f'"{s}"'
 
-
-def _current_launcher_command() -> str:
+def _current_launcher_command_autorun() -> str:
     if is_frozen():
-        return _quoted(sys.executable)  # EXE
+        return f'{_quoted(sys.executable)} --autorun'
     else:
-        return f'{_quoted(sys.executable)} {_quoted(os.path.abspath(__file__))}'
-
-
-def ensure_autostart_task() -> bool:
-    try:
-        tn = "TestLauncher_AutoResume"
-        tr = _current_launcher_command()
-        ru = _user_domain_username()
-        subprocess.run(["schtasks", "/Delete", "/TN", tn, "/F"],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        cmd = ["schtasks", "/Create",
-               "/TN", tn, "/SC", "ONLOGON",
-               "/TR", f'cmd.exe /c {tr}',
-               "/IT", "/RL", "LIMITED", "/RU", ru, "/F"]
-        subprocess.check_call(cmd)
-        log_resume(f"[autostart] task created OK as {ru}: {tr}")
-        return True
-    except subprocess.CalledProcessError as e:
-        log_resume(f"[autostart] create failed (SCHTASKS RC={e.returncode}): {e}")
-        return False
-    except Exception as e:
-        log_resume(f"[autostart] create error: {e}")
-        return False
-
-
-def remove_autostart_task():
-    try:
-        subprocess.run(["schtasks", "/Delete", "/TN", "TestLauncher_AutoResume", "/F"], check=False)
-        log_resume("[autostart] task removed")
-    except Exception as e:
-        log_resume(f"[autostart] task remove fail: {e}")
-
+        return f'{_quoted(sys.executable)} {_quoted(os.path.abspath(__file__))} --autorun'
 
 def ensure_run_registry():
-    """ Резервный автозапуск в HKCU\...\Run """
     try:
         import winreg
         run_key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, run_key_path, 0, winreg.KEY_SET_VALUE) as key:
-            winreg.SetValueEx(key, "TestLauncher_AutoResume", 0, winreg.REG_SZ, _current_launcher_command())
+            winreg.SetValueEx(key, "TestLauncher_AutoResume", 0, winreg.REG_SZ, _current_launcher_command_autorun())
         log_resume("[autostart] Run-key set OK")
     except Exception as e:
         log_resume(f"[autostart] Run-key set fail: {e}")
-
 
 def remove_run_registry():
     try:
@@ -139,22 +97,23 @@ def remove_run_registry():
     except Exception as e:
         log_resume(f"[autostart] Run-key remove fail: {e}")
 
+def nuke_legacy_autostart():
+    try:
+        subprocess.run(
+            ["schtasks", "/Delete", "/TN", "TestLauncher_AutoResume", "/F"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False
+        )
+    except Exception:
+        pass
+    try:
+        startup = os.path.join(os.environ.get("APPDATA", ""), r"Microsoft\Windows\Start Menu\Programs\Startup")
+        lnk = os.path.join(startup, "TestLauncher_AutoResume.lnk")
+        if lnk and os.path.exists(lnk):
+            os.remove(lnk)
+    except Exception:
+        pass
 
 def diag_autostart():
-    """ Диагностика: пишет в resume.log состояние задачи и Run-ключа. """
-    try:
-        out = subprocess.run(["schtasks", "/Query", "/TN", "TestLauncher_AutoResume", "/V", "/FO", "LIST"],
-                             capture_output=True, text=True)
-        log_resume(f"[diag] SCHTASKS /Query RC={out.returncode}")
-        if out.stdout:
-            for line in out.stdout.splitlines():
-                if any(k in line for k in ("TaskName", "Next Run Time", "Status", "Last Run Time", "Last Result")):
-                    log_resume(f"[diag] {line}")
-        if out.stderr:
-            log_resume(f"[diag] stderr: {out.stderr}")
-    except Exception as e:
-        log_resume(f"[diag] schtasks query fail: {e}")
-
     try:
         import winreg
         run_key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
@@ -167,9 +126,7 @@ def diag_autostart():
     except Exception as e:
         log_resume(f"[diag] Run-key read fail: {e}")
 
-
-# ===================== мягкое завершение окон тестов =====================
-
+# ============ мягкое завершение окон тестов ============
 def _activate_window_by_title(title_substr: str) -> bool:
     import win32gui, win32con
     def cb(hwnd, result):
@@ -177,7 +134,6 @@ def _activate_window_by_title(title_substr: str) -> bool:
             title = win32gui.GetWindowText(hwnd)
             if title_substr.lower() in title.lower():
                 result.append(hwnd)
-
     hwnds = []
     win32gui.EnumWindows(cb, hwnds)
     if hwnds:
@@ -186,82 +142,91 @@ def _activate_window_by_title(title_substr: str) -> bool:
         return True
     return False
 
-
 def gracefully_finish_tests():
-    import pyautogui
+    import pyautogui, time as _t
     fur_closed = False
     if _activate_window_by_title("FurMark"):
-        time.sleep(0.5)
-        pyautogui.press("esc")
-        fur_closed = True
-        time.sleep(1)
+        _t.sleep(0.5); pyautogui.press("esc"); fur_closed = True; _t.sleep(1)
     fio_closed = False
     if _activate_window_by_title("fio"):
-        time.sleep(0.5)
-        pyautogui.hotkey("ctrl", "c")
-        fio_closed = True
-        time.sleep(1)
+        _t.sleep(0.5); pyautogui.hotkey("ctrl", "c"); fio_closed = True; _t.sleep(1)
     elif _activate_window_by_title("cmd"):
-        time.sleep(0.5)
-        pyautogui.hotkey("ctrl", "c")
-        fio_closed = True
-        time.sleep(1)
-    time.sleep(3)
+        _t.sleep(0.5); pyautogui.hotkey("ctrl", "c"); fio_closed = True; _t.sleep(1)
+    _t.sleep(3)
     print(f"FurMark closed: {fur_closed}, fio closed: {fio_closed}")
 
-
-# ===================== состояние =====================
+# ================= состояние =================
+def _log_state_location():
+    log_resume(f"[state] primary={STATE_FILE}")
+    log_resume(f"[state] legacy={LEGACY_STATE_FILE}")
 
 def save_state(params: dict):
     try:
+        params = dict(params)
+        params.setdefault("launcher_path", sys.executable if is_frozen() else sys.executable)
+        params.setdefault("workdir", os.path.dirname(sys.executable) if is_frozen() else os.path.dirname(os.path.abspath(__file__)))
+
+        os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
         with open(STATE_FILE, "w", encoding="utf-8") as f:
             json.dump(params, f, ensure_ascii=False)
+            f.flush(); os.fsync(f.fileno())
 
-        # Автозапуск: используем ТОЛЬКО HKCU\...\Run
+        _log_state_location()
         ensure_run_registry()
-
-        # Диагностика
         diag_autostart()
+        log_resume("[state] saved OK")
     except Exception as e:
-        print(f"[state] save failed: {e}")
-
+        log_resume(f"[state] save failed: {e}")
 
 def load_state():
     try:
+        _log_state_location()
         if os.path.exists(STATE_FILE):
             with open(STATE_FILE, "r", encoding="utf-8") as f:
+                log_resume("[state] loaded from primary")
                 return json.load(f)
+        if os.path.exists(LEGACY_STATE_FILE):
+            with open(LEGACY_STATE_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            try:
+                with open(STATE_FILE, "w", encoding="utf-8") as w:
+                    json.dump(data, w, ensure_ascii=False)
+                os.remove(LEGACY_STATE_FILE)
+                log_resume("[state] migrated legacy -> primary")
+            except Exception as e:
+                log_resume(f"[state] migrate fail: {e}")
+            return data
+        log_resume("[state] not found")
     except Exception as e:
-        print(f"[state] load failed: {e}")
+        log_resume(f"[state] load failed: {e}")
     return None
-
 
 def clear_state():
     try:
-        if os.path.exists(STATE_FILE):
-            os.remove(STATE_FILE)
-        remove_autostart_task()
+        for path in (STATE_FILE, LEGACY_STATE_FILE):
+            try:
+                if os.path.exists(path):
+                    os.remove(path)
+                    log_resume(f"[state] removed: {path}")
+            except Exception as e:
+                log_resume(f"[state] remove failed ({path}): {e}")
         remove_run_registry()
     except Exception as e:
-        print(f"[state] clear failed: {e}")
+        log_resume(f"[state] clear failed: {e}")
 
-
-# ===================== SINGLE INSTANCE =====================
+# ============== SINGLE INSTANCE ==============
 def acquire_single_instance_lock():
     import msvcrt
-    lockdir = os.path.join(os.environ.get("LOCALAPPDATA", os.getcwd()), "TestLauncher")
-    os.makedirs(lockdir, exist_ok=True)
-    lockpath = os.path.join(lockdir, "instance.lock")
+    os.makedirs(APPDIR, exist_ok=True)
+    lockpath = os.path.join(APPDIR, "instance.lock")
     f = open(lockpath, "w")
     try:
         msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
-        return f  # держим хэндл открытым до конца процесса
+        return f
     except OSError:
         return None
 
-
-# ===================== HEADLESS резюм =====================
-
+# ============== HEADLESS RESUME ==============
 def headless_resume(state: dict):
     try:
         log_resume("[resume] start")
@@ -276,7 +241,7 @@ def headless_resume(state: dict):
 
     pwsh_path = r"C:\Program Files\PowerShell\7\pwsh.exe"
     script_full_path = resource_path("aida_fio_furmark.ps1")
-    workdir = os.path.dirname(sys.executable) if is_frozen() else os.path.dirname(os.path.abspath(__file__))
+    workdir = state.get("workdir") or (os.path.dirname(sys.executable) if is_frozen() else os.path.dirname(os.path.abspath(__file__)))
 
     log_resume(f"[resume] script_full_path={script_full_path} exists={os.path.exists(script_full_path)}")
     log_resume(f"[resume] workdir={workdir} exists={os.path.isdir(workdir)}")
@@ -292,19 +257,14 @@ def headless_resume(state: dict):
     logfile_path = os.path.join(workdir, "test_launcher_log.txt")
     env = os.environ.copy()
     env["PATH"] = r"C:\Program Files\PowerShell\7;" + env.get("PATH", "")
-
     pwsh_args = [pwsh_path, "-ExecutionPolicy", "Bypass", "-File", script_full_path, *args]
 
     with open(logfile_path, "a", encoding="utf-8") as logfile:
         log_resume(f"[resume] launching: {pwsh_args}")
         try:
             test_proc = subprocess.Popen(
-                pwsh_args,
-                stdout=logfile,
-                stderr=subprocess.STDOUT,
-                shell=False,
-                env=env,
-                cwd=workdir
+                pwsh_args, stdout=logfile, stderr=subprocess.STDOUT,
+                shell=False, env=env, cwd=workdir
             )
         except FileNotFoundError as e:
             log_resume(f"[resume][FATAL] cannot start pwsh: {e}")
@@ -313,15 +273,12 @@ def headless_resume(state: dict):
     stop_flag = threading.Event()
 
     def autoscreen_worker():
-        exe_path = sys.executable if is_frozen() else os.path.abspath("main.py")
-        hour = 3600
-        elapsed = 0
+        exe_path = state.get("launcher_path") or (sys.executable if is_frozen() else os.path.abspath("main.py"))
+        hour = 3600; elapsed = 0
         while not stop_flag.is_set() and elapsed < duration_seconds:
             to_sleep = min(hour, duration_seconds - elapsed)
-            if to_sleep <= 0:
-                break
-            if stop_flag.wait(to_sleep):
-                break
+            if to_sleep <= 0: break
+            if stop_flag.wait(to_sleep): break
             try:
                 subprocess.Popen([exe_path, "--autoscreen"], shell=True, cwd=workdir)
             except Exception as e:
@@ -331,13 +288,11 @@ def headless_resume(state: dict):
     threading.Thread(target=autoscreen_worker, daemon=True).start()
     log_resume("[resume] threads spawned OK")
 
-    # <<< КЛЮЧЕВОЕ: держим процесс, пока тесты не закончатся
     rc = test_proc.wait()
     log_resume(f"[resume] pwsh finished rc={rc}")
 
-    # финальный скрин и очистка состояния
     try:
-        exe_path = sys.executable if is_frozen() else os.path.abspath("main.py")
+        exe_path = state.get("launcher_path") or (sys.executable if is_frozen() else os.path.abspath("main.py"))
         subprocess.Popen([exe_path, "--screen"], shell=True, cwd=workdir)
     except Exception as e:
         log_resume(f"[resume] final screen fail: {e}")
@@ -346,32 +301,8 @@ def headless_resume(state: dict):
         clear_state()
         log_resume("[resume] state cleared")
 
-    def finalize():
-        try:
-            rc = test_proc.wait()
-            log_resume(f"[resume] pwsh finished rc={rc}")
-        finally:
-            stop_flag.set()
-            time.sleep(2)
-            exe_path = sys.executable if is_frozen() else os.path.abspath("main.py")
-            try:
-                subprocess.Popen([exe_path, "--screen"], shell=True, cwd=workdir)
-            except Exception as e:
-                log_resume(f"[resume] final screen fail: {e}")
-            clear_state()
-            log_resume("[resume] state cleared")
-
-    threading.Thread(target=finalize, daemon=True).start()
-    log_resume("[resume] threads spawned OK")
-
-
-# ===================== GUI =====================
-
+# ================= GUI =================
 def run_gui():
-    import tkinter as tk
-    from tkinter import messagebox
-    import pyautogui
-
     class TestLauncherApp:
         def __init__(self, root):
             self.root = root
@@ -445,8 +376,7 @@ def run_gui():
             tk.Button(self.root, text="Выход", command=self.root.quit).pack(pady=5)
 
         def toggle_custom(self):
-            state = "normal" if self.time_choice.get() == "6" else "disabled"
-            self.custom_hour_spin.config(state=state)
+            self.custom_hour_spin.config(state=("normal" if self.time_choice.get() == "6" else "disabled"))
 
         def populate_disks(self):
             for w in self.disk_frame.winfo_children():
@@ -480,8 +410,7 @@ def run_gui():
                     size_gb = f"{total // (1024 ** 3)} GB"
                 except Exception:
                     size_gb = "?"
-                cb = tk.Checkbutton(self.disk_frame,
-                                    text=f"{dev}: {label}, {size_gb}", variable=var)
+                cb = tk.Checkbutton(self.disk_frame, text=f"{dev}: {label}, {size_gb}", variable=var)
                 cb.pack(anchor="w")
                 self.checkbuttons.append(cb)
                 self.check_vars.append((var, dev))
@@ -493,7 +422,7 @@ def run_gui():
                 cb.config(state=("normal" if enable else "disabled"))
 
         def run_test(self):
-            # deps
+            from tkinter import messagebox
             try:
                 install_dependencies_if_needed()
             except Exception as e:
@@ -529,10 +458,10 @@ def run_gui():
                 duration = str(minutes)
             else:
                 duration = time_map.get(self.time_choice.get(), "60")
+
             args.append(duration)
             duration_seconds = int(duration) * 60
 
-            # сохраняем состояние + автозапуск
             save_state({"args": args, "duration_seconds": duration_seconds})
 
             pwsh_path = r"C:\Program Files\PowerShell\7\pwsh.exe"
@@ -544,14 +473,10 @@ def run_gui():
 
             try:
                 with open(logfile_path, "w", encoding="utf-8") as logfile:
-                    # <<< стандартный запуск PowerShell, как раньше
                     self.test_proc = subprocess.Popen(
                         [pwsh_path, "-ExecutionPolicy", "Bypass", "-File", script_full_path, *args],
-                        stdout=logfile,
-                        stderr=subprocess.STDOUT,
-                        shell=False,
-                        env=env,
-                        cwd=workdir
+                        stdout=logfile, stderr=subprocess.STDOUT,
+                        shell=False, env=env, cwd=workdir
                     )
                 time.sleep(45)
                 self.stop_flag = threading.Event()
@@ -559,14 +484,11 @@ def run_gui():
 
                 def autoscreen_worker():
                     exe_path = sys.executable if is_frozen() else os.path.abspath("main.py")
-                    hour = 3600
-                    elapsed = 0
+                    hour = 3600; elapsed = 0
                     while not self.stop_flag.is_set() and elapsed < duration_seconds:
                         to_sleep = min(hour, duration_seconds - elapsed)
-                        if to_sleep <= 0:
-                            break
-                        if self.stop_flag.wait(to_sleep):
-                            break
+                        if to_sleep <= 0: break
+                        if self.stop_flag.wait(to_sleep): break
                         subprocess.Popen([exe_path, "--autoscreen"], shell=True, cwd=workdir)
                         elapsed += to_sleep
 
@@ -598,6 +520,7 @@ def run_gui():
             clear_state()
 
         def run_uninstall_script(self):
+            from tkinter import messagebox
             try:
                 script_path = resource_path("AllUnin.ps1")
                 pwsh_path = r"C:\Program Files\PowerShell\7\pwsh.exe"
@@ -616,11 +539,12 @@ def run_gui():
             computer_name = os.environ.get("COMPUTERNAME", "Unknown")
             base_path = os.path.join(os.path.expanduser("~"), "Desktop", "Report", computer_name)
             os.makedirs(base_path, exist_ok=True)
+            import pyautogui
             img = pyautogui.screenshot()
-            path = os.path.join(base_path, f"screenshot_{now}.png")
-            img.save(path)
+            img.save(os.path.join(base_path, f"screenshot_{now}.png"))
 
         def generate_report(self):
+            from tkinter import messagebox
             try:
                 computer_name = os.environ.get("COMPUTERNAME", "Unknown")
                 desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
@@ -653,7 +577,6 @@ def run_gui():
                                check=True, env=env)
 
                 messagebox.showinfo("Успешно", f"Все отчёты и скриншоты сохранены в:\n{report_dir}")
-
             except subprocess.CalledProcessError as e:
                 messagebox.showerror("Ошибка", f"Команда вернула ошибку:\n{e}")
             except Exception as e:
@@ -663,20 +586,22 @@ def run_gui():
     app = TestLauncherApp(root)
     root.mainloop()
 
-
-# ===================== вход =====================
+# ==================== ВХОД ====================
 if __name__ == "__main__":
+    nuke_legacy_autostart()
     _lock = acquire_single_instance_lock()
     if _lock is None:
         log_resume("[single] another instance is running — exit")
         sys.exit(0)
 
-    if "--diag-autostart" in sys.argv:
-        diag_autostart()
-        sys.exit(0)
+    autorun_mode = ("--autorun" in sys.argv)
 
     state = load_state()
     if state:
         headless_resume(state)
     else:
-        run_gui()
+        if autorun_mode:
+            log_resume("[autorun] no state -> silent exit")
+            sys.exit(0)
+        else:
+            run_gui()
