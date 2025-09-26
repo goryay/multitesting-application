@@ -241,7 +241,25 @@ def headless_resume(state: dict):
 
     pwsh_path = r"C:\Program Files\PowerShell\7\pwsh.exe"
     script_full_path = resource_path("aida_fio_furmark.ps1")
-    workdir = state.get("workdir") or (os.path.dirname(sys.executable) if is_frozen() else os.path.dirname(os.path.abspath(__file__)))
+
+    # безопасно выбираем рабочую папку
+    desired_workdir = state.get("workdir") or (
+        os.path.dirname(sys.executable) if is_frozen()
+        else os.path.dirname(os.path.abspath(__file__))
+    )
+    if not os.path.isdir(desired_workdir):
+        log_resume(f"[resume] desired workdir missing: {desired_workdir}")
+        desired_workdir = os.path.dirname(sys.executable) if is_frozen() else os.path.dirname(os.path.abspath(__file__))
+        log_resume(f"[resume] fallback workdir: {desired_workdir}")
+        # обновим state
+        try:
+            state["workdir"] = desired_workdir
+            with open(STATE_FILE, "w", encoding="utf-8") as f:
+                json.dump(state, f, ensure_ascii=False)
+        except Exception as e:
+            log_resume(f"[resume] state rewrite fail: {e}")
+
+    workdir = desired_workdir
 
     log_resume(f"[resume] script_full_path={script_full_path} exists={os.path.exists(script_full_path)}")
     log_resume(f"[resume] workdir={workdir} exists={os.path.isdir(workdir)}")
@@ -254,7 +272,10 @@ def headless_resume(state: dict):
     except Exception as e:
         log_resume(f"[resume] chdir fail: {e}")
 
-    logfile_path = os.path.join(workdir, "test_launcher_log.txt")
+    # лог всегда в APPDIR
+    os.makedirs(APPDIR, exist_ok=True)
+    logfile_path = os.path.join(APPDIR, "test_launcher_log.txt")
+
     env = os.environ.copy()
     env["PATH"] = r"C:\Program Files\PowerShell\7;" + env.get("PATH", "")
     pwsh_args = [pwsh_path, "-ExecutionPolicy", "Bypass", "-File", script_full_path, *args]
@@ -263,22 +284,29 @@ def headless_resume(state: dict):
         log_resume(f"[resume] launching: {pwsh_args}")
         try:
             test_proc = subprocess.Popen(
-                pwsh_args, stdout=logfile, stderr=subprocess.STDOUT,
+                pwsh_args,
+                stdout=logfile, stderr=subprocess.STDOUT,
                 shell=False, env=env, cwd=workdir
             )
         except FileNotFoundError as e:
             log_resume(f"[resume][FATAL] cannot start pwsh: {e}")
             return
 
+    # <<< ВАЖНО: создаём флаг до воркера
     stop_flag = threading.Event()
 
     def autoscreen_worker():
-        exe_path = state.get("launcher_path") or (sys.executable if is_frozen() else os.path.abspath("main.py"))
-        hour = 3600; elapsed = 0
+        exe_path = state.get("launcher_path") or (
+            sys.executable if is_frozen() else os.path.abspath("main.py")
+        )
+        hour = 3600
+        elapsed = 0
         while not stop_flag.is_set() and elapsed < duration_seconds:
             to_sleep = min(hour, duration_seconds - elapsed)
-            if to_sleep <= 0: break
-            if stop_flag.wait(to_sleep): break
+            if to_sleep <= 0:
+                break
+            if stop_flag.wait(to_sleep):
+                break
             try:
                 subprocess.Popen([exe_path, "--autoscreen"], shell=True, cwd=workdir)
             except Exception as e:
@@ -292,8 +320,10 @@ def headless_resume(state: dict):
     log_resume(f"[resume] pwsh finished rc={rc}")
 
     try:
-        exe_path = state.get("launcher_path") or (sys.executable if is_frozen() else os.path.abspath("main.py"))
-        subprocess.Popen([exe_path, "--screen"], shell=True, cwd=workdir)
+        exe_path = state.get("launcher_path") or (
+            sys.executable if is_frozen() else os.path.abspath("main.py")
+        )
+        subprocess.run([exe_path, "--screen"], shell=True, cwd=workdir, check=False)
     except Exception as e:
         log_resume(f"[resume] final screen fail: {e}")
     finally:
@@ -501,7 +531,7 @@ def run_gui():
                     self.stop_btn.config(state="disabled")
                     time.sleep(2)
                     exe_path = sys.executable if is_frozen() else os.path.abspath("main.py")
-                    subprocess.Popen([exe_path, "--screen"], shell=True, cwd=workdir)
+                    subprocess.run([exe_path, "--screen"], shell=True, cwd=workdir, check=False)
                     clear_state()
 
                 threading.Thread(target=wait_and_final_screens, daemon=True).start()
@@ -516,7 +546,7 @@ def run_gui():
             time.sleep(2)
             workdir = os.path.dirname(sys.executable) if is_frozen() else os.path.dirname(os.path.abspath(__file__))
             exe_path = sys.executable if is_frozen() else os.path.abspath("main.py")
-            subprocess.Popen([exe_path, "--screen"], shell=True, cwd=workdir)
+            subprocess.run([exe_path, "--screen"], shell=True, cwd=workdir, check=False)
             clear_state()
 
         def run_uninstall_script(self):
