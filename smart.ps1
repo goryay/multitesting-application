@@ -83,17 +83,27 @@ $report | ForEach-Object {
 
 # Выводим сводную информацию
 $report | Format-Table -Property `
-    Disk,
-    Type,
-    @{Name="Health"; Expression={$_.Health}; 
-        FormatString={ if($_.Health -eq "PASSED") { "✅" } else { "❌" } }},
-    Temperature,
-    PowerOnHours,
-    @{Name="Media/Realloc"; Expression={
-        if($_.Type -eq "NVMe") { $_.MediaErrors } else { $_.ReallocatedSectors }};
-        FormatString={ if([int]$_ -gt 0) { "⚠️"+$_ } else { $_ } }},
-    @{Name="PendingSec"; Expression={$_.PendingSectors};
-        FormatString={ if([int]$_ -gt 0) { "⚠️"+$_ } else { $_ } }} -AutoSize
+    'Disk',
+    'Type',
+    @{ Label = 'Health'; Expression = {
+        if ($_.Health -eq 'PASSED') { '✅' } else { '❌' }
+    }},
+    @{ Label = 'Temperature'; Expression = {
+        if ($null -ne $_.Temperature) { '{0:N0}' -f $_.Temperature } else { '' }
+    }},
+    @{ Label = 'PowerOnHours'; Expression = {
+        if ($null -ne $_.PowerOnHours) { '{0:N0}' -f $_.PowerOnHours } else { '' }
+    }},
+    @{ Label = 'Media/Realloc'; Expression = {
+        $v = if ($_.Type -eq 'NVMe') { $_.MediaErrors } else { $_.ReallocatedSectors }
+        $n = [int]($v)
+        if ($n -gt 0) { "⚠️$n" } else { "$n" }
+    }},
+    @{ Label = 'PendingSec'; Expression = {
+        $n = [int]$_.PendingSectors
+        if ($n -gt 0) { "⚠️$n" } else { "$n" }
+    }} `
+    -AutoSize
 
 Write-Host "`nОтчёты сохранены в папку: $reportFolder" -ForegroundColor Green
 Write-Host "1. Краткий отчёт: $csvReport" -ForegroundColor Cyan
