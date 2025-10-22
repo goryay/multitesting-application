@@ -401,6 +401,7 @@ def run_gui():
 
             tk.Button(self.root, text="Сделать скриншот", command=self.take_screenshot).pack(pady=5)
             tk.Button(self.root, text="Создать отчёт", command=self.generate_report).pack(pady=5)
+            tk.Button(self.root, text="Создать отчёт HTML", command=self.generate_report_html).pack(pady=5)
             tk.Button(self.root, text="Удалить установленные компоненты",
                       command=self.run_uninstall_script).pack(pady=5)
             tk.Button(self.root, text="Выход", command=self.root.quit).pack(pady=5)
@@ -572,6 +573,26 @@ def run_gui():
             import pyautogui
             img = pyautogui.screenshot()
             img.save(os.path.join(base_path, f"screenshot_{now}.png"))
+
+        def generate_report_html(self):
+            try:
+                html_report = resource_path("Generate_SoftwareReport.ps1")
+                pwh_path = r"C:\Program Files\PowerShell\7\pwsh.exe"
+                result = subprocess.run([pwh_path, "-File", html_report, "-IncludeSoftware"],
+                                        capture_output=True,
+                                        text=True,
+                                        check=True
+                                        )
+                print("STDOUT:", result.stdout)
+                print("STDERR:", result.stderr)
+            except FileNotFoundError:
+                print("Ошибка: скрипт не найден")
+            except subprocess.CalledProcessError as e:
+                print(f"Ошибка выполнения скрипта:\n{e}")
+                print("STDOUT:", e.stdout)
+                print("STDERR:", e.stderr)
+            except Exception as e:
+                print(f"Произошла непредвиденная ошибка:\n{e}")
 
         def generate_report(self):
             from tkinter import messagebox
