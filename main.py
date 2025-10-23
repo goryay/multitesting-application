@@ -568,25 +568,41 @@ def run_gui():
         def take_screenshot(self):
             now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             computer_name = os.environ.get("COMPUTERNAME", "Unknown")
-            base_path = os.path.join(os.path.expanduser("~"), "Desktop", "Report", computer_name)
-            os.makedirs(base_path, exist_ok=True)
+            desktop = os.path.join(os.path.expanduser("~"), "Desktop")
+            base_dir = os.path.join(desktop, computer_name)
+            screens_dir = os.path.join(base_dir, "Screens")
+            os.makedirs(screens_dir, exist_ok=True)
+
             import pyautogui
             img = pyautogui.screenshot()
-            img.save(os.path.join(base_path, f"screenshot_{now}.png"))
+            img.save(os.path.join(screens_dir, f"screenshot_{now}.png"))
 
         def generate_report_html(self):
             try:
+                computer_name = os.environ.get("COMPUTERNAME", "Unknown")
+                desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
+                base_dir = os.path.join(desktop_path, computer_name)
+                reports_dir = os.path.join(base_dir, "Reports")
+                os.makedirs(reports_dir, exist_ok=True)
+
                 html_report = resource_path("Generate_SoftwareReport.ps1")
-                pwh_path = r"C:\Program Files\PowerShell\7\pwsh.exe"
-                result = subprocess.run([pwh_path, "-File", html_report, "-IncludeSoftware"],
-                                        capture_output=True,
-                                        text=True,
-                                        check=True
-                                        )
+                pwsh_path = r"C:\Program Files\PowerShell\7\pwsh.exe"
+
+                result = subprocess.run([
+                    pwsh_path, "-ExecutionPolicy", "Bypass", "-File", html_report,
+                    "-ComputerName", computer_name,
+                    "-OutputFolder", reports_dir,
+                    "-IncludeSoftware"
+                ],
+                    capture_output=True,
+                    text=True,
+                    check=True)
+
                 print("STDOUT:", result.stdout)
                 print("STDERR:", result.stderr)
+
             except FileNotFoundError:
-                print("Ошибка: скрипт не найден")
+                print("Ошибка: скрипт Generate_SoftwareReport.ps1 не найден")
             except subprocess.CalledProcessError as e:
                 print(f"Ошибка выполнения скрипта:\n{e}")
                 print("STDOUT:", e.stdout)
@@ -599,8 +615,12 @@ def run_gui():
             try:
                 computer_name = os.environ.get("COMPUTERNAME", "Unknown")
                 desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
-                report_dir = os.path.join(desktop_path, "Report", computer_name)
-                os.makedirs(report_dir, exist_ok=True)
+                base_dir = os.path.join(desktop_path, computer_name)
+                reports_dir = os.path.join(base_dir, "Reports")
+                screens_dir = os.path.join(base_dir, "Screens")
+
+                os.makedirs(reports_dir, exist_ok=True)
+                os.makedirs(screens_dir, exist_ok=True)
 
                 aida_path = resource_path(r"SoftForTest\AIDA64\AIDA64Port.exe")
                 script_path = resource_path("aida_fio_furmark.ps1")
@@ -612,9 +632,10 @@ def run_gui():
                 ps_aida = (
                     f". '{script_path}'; "
                     f"Generate-Report -computerName '{computer_name}' "
-                    f"-desktopPath '{desktop_path}' "
+                    f"-outputFolder '{reports_dir}' "
                     f"-aida64FullPath '{aida_path}'"
                 )
+
                 subprocess.Popen([pwsh_path, "-ExecutionPolicy", "Bypass", "-Command", ps_aida], env=env)
 
                 try:
@@ -623,11 +644,11 @@ def run_gui():
                 except Exception:
                     self.take_screenshot()
 
-                smart_output = os.path.join(report_dir, f"smart_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.txt")
+                smart_output = os.path.join(reports_dir, f"smart_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.txt")
                 subprocess.run([pwsh_path, "-ExecutionPolicy", "Bypass", "-File", smart_script, smart_output],
                                check=True, env=env)
 
-                messagebox.showinfo("Успешно", f"Все отчёты и скриншоты сохранены в:\n{report_dir}")
+                messagebox.showinfo("Успешно", f"Все отчёты и скриншоты сохранены в:\n{reports_dir}")
             except subprocess.CalledProcessError as e:
                 messagebox.showerror("Ошибка", f"Команда вернула ошибку:\n{e}")
             except Exception as e:

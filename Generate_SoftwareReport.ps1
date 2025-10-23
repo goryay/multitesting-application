@@ -1,5 +1,19 @@
-#Requires -Version 5.1
-param([switch]$IncludeSoftware)
+param(
+    [string]$ComputerName,
+    [string]$OutputFolder,
+    [switch]$IncludeSoftware
+)
+
+if (-not $ComputerName) { $ComputerName = $env:COMPUTERNAME }
+if (-not $OutputFolder) {
+    $desktop = [Environment]::GetFolderPath('Desktop')
+    $OutputFolder = Join-Path (Join-Path $desktop $ComputerName) 'Reports'
+}
+
+New-Item -ItemType Directory -Force -Path $OutputFolder | Out-Null
+
+$ts = Get-Date -Format 'yyyy-MM-dd_HH-mm-ss'
+$ReportPath = Join-Path $OutputFolder "Software_Report_$ts.html"
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -412,7 +426,7 @@ function Get-Text_Packages {
 # ---------- Сбор и рендер ----------
 $now = Get-Date
 $computer = $env:COMPUTERNAME
-$title = "Отчёт о системе $computer от $($now.ToString('yyyy-MM-dd_HH-mm'))"
+$title = "Отчёт о системе $ComputerName от $($now.ToString('yyyy-MM-dd_HH-mm'))"
 
 $section1 = Get-Text_SystemInfo
 $section2 = Get-Text_Disks
@@ -422,11 +436,11 @@ $section5 = Get-Text_Network
 $section6 = Get-Text_Packages -IncludeSoftware:$IncludeSoftware
 
 # ---------- Вывод HTML (минималистично, как в Linux-файле) ----------
-$desk = [Environment]::GetFolderPath('Desktop')
-$dir = Join-Path $desk ("Report{0}" -f $computer)
-New-Item -Force -ItemType Directory -Path $dir | Out-Null
-$fname = "Software_Report_{0}.html" -f (Get-Date -Format "yyyy-MM-dd_HH-mm")
-$path = Join-Path $dir $fname
+#$desk = [Environment]::GetFolderPath('Desktop')
+#$dir = Join-Path $desk ("Report{0}" -f $computer)
+#New-Item -Force -ItemType Directory -Path $dir | Out-Null
+#$fname = "Software_Report_{0}.html" -f (Get-Date -Format "yyyy-MM-dd_HH-mm")
+#$path = Join-Path $dir $fname
 
 $html = @"
 <html>
@@ -455,5 +469,5 @@ $html = @"
 </html>
 "@
 
-Set-Content -LiteralPath $path -Value $html -Encoding UTF8
-Write-Host "✅ Готово: $path"
+Set-Content -LiteralPath $ReportPath -Value $html -Encoding UTF8
+Write-Host "✅ Готово: $ReportPath"

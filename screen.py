@@ -50,10 +50,12 @@ current_slot_index = 0
 def get_report_directory():
     desktop = os.path.join(os.environ["USERPROFILE"], "Desktop")
     computer_name = os.environ["COMPUTERNAME"]
-    report_directory = os.path.join(desktop, "Report", computer_name)
-    os.makedirs(report_directory, exist_ok=True)
-    return report_directory
 
+    base_dir = os.path.join(desktop, computer_name)
+    screens_dir = os.path.join(base_dir, "Screens")
+
+    os.makedirs(screens_dir, exist_ok=True)
+    return screens_dir
 
 def safe_capture(hwnd, folder, autoscreen=False):
     global current_slot_index

@@ -2,9 +2,12 @@
 $smartctlPath = "C:\Program Files\smartmontools\bin\smartctl.exe"
 
 # Папка для отчётов на рабочем столе
-$reportFolder = "$env:USERPROFILE\Desktop\Report\SMART_Reports"
+$computerName = $env:COMPUTERNAME
+$baseFolder = Join-Path $env:USERPROFILE "Desktop\$computerName"
+$reportFolder = Join-Path $baseFolder "Reports"
+
 if (-not (Test-Path $reportFolder)) {
-    New-Item -ItemType Directory -Path $reportFolder | Out-Null
+    New-Item -ItemType Directory -Path $reportFolder -Force | Out-Null
 }
 
 # Проверка наличия smartctl

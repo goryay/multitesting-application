@@ -107,28 +107,37 @@ rw=rw
 }
 
 function Generate-Report {
+    [CmdletBinding()]
     param(
         [string]$computerName,
-        [string]$desktopPath,
-        [string]$aida64FullPath
+        [string]$aida64FullPath,   # полный путь к AIDA64Port.exe
+        [string]$outputFolder      # КУДА класть отчёт (Desktop\<ПК>\Reports)
     )
-    $reportDirectory = Join-Path -Path $desktopPath -ChildPath "Report\$computerName"
-    $ReportPath = Join-Path -Path $reportDirectory -ChildPath "SystemReport.html"
 
-    if (-Not (Test-Path -Path $reportDirectory)) {
-        New-Item -ItemType Directory -Path $reportDirectory | Out-Null
+    if (-not $computerName -or $computerName -eq "") {
+        $computerName = $env:COMPUTERNAME
     }
 
-    try {
-        Start-Process -FilePath $aida64FullPath -ArgumentList @(
-            "/R `"$ReportPath`"",
-            "/ALL", "/SUM", "/HW", "/SW", "/AUDIT", "/HTML"
-        ) -NoNewWindow
-        Write-Host "Запущена генерация отчета AIDA64 в фоне: $ReportPath"
-    } catch {
-        Write-Host "Ошибка при запуске генерации отчета AIDA64: $_"
+    # fallback на нужную структуру, если не передали из Python
+    if (-not $outputFolder -or $outputFolder -eq "") {
+        $desktop = [Environment]::GetFolderPath('Desktop')
+        $outputFolder = Join-Path (Join-Path $desktop $computerName) 'Reports'
     }
+    New-Item -ItemType Directory -Force -Path $outputFolder | Out-Null
+
+    if (-not (Test-Path $aida64FullPath)) {
+        throw "AIDA64 не найдена: $aida64FullPath"
+    }
+
+    $ts = Get-Date -Format 'yyyy-MM-dd_HH-mm-ss'
+    $aidaHtml = Join-Path $outputFolder ("AIDA64_{0}_{1}.html" -f $computerName, $ts)
+
+    # Генерация HTML из AIDA64 в наш целевой файл
+    # /R <file> — путь отчёта, /HTML — формат, /SILENT — без UI
+    $args = @('/R', "`"$aidaHtml`"", '/HTML', '/SILENT')
+    Start-Process -FilePath $aida64FullPath -ArgumentList $args -Wait -NoNewWindow
 }
+
 
 # --- ОБРАБОТКА GUI АРГУМЕНТОВ ---
 if ($args.Count -ge 2) {
