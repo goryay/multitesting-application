@@ -1,6 +1,7 @@
 import os, sys, json, time, psutil, ctypes, shutil, threading, subprocess
 from datetime import datetime
 import tkinter as tk
+from tkinter import messagebox
 
 def is_frozen() -> bool:
     return getattr(sys, "frozen", False)
@@ -402,6 +403,7 @@ def run_gui():
             tk.Button(self.root, text="Сделать скриншот", command=self.take_screenshot).pack(pady=5)
             tk.Button(self.root, text="Создать отчёт", command=self.generate_report).pack(pady=5)
             tk.Button(self.root, text="Создать отчёт HTML", command=self.generate_report_html).pack(pady=5)
+            tk.Button(self.root, text="Архив", command=self.archive_results).pack(pady=5)
             tk.Button(self.root, text="Удалить установленные компоненты",
                       command=self.run_uninstall_script).pack(pady=5)
             tk.Button(self.root, text="Выход", command=self.root.quit).pack(pady=5)
@@ -653,6 +655,24 @@ def run_gui():
                 messagebox.showerror("Ошибка", f"Команда вернула ошибку:\n{e}")
             except Exception as e:
                 messagebox.showerror("Ошибка", f"Ошибка при создании отчета:\n{e}")
+
+        def archive_results(self):
+            try:
+                computer_name = os.environ.get("COMPUTERNAME", "Unknown")
+                desktop = os.path.join(os.path.expanduser("~"), "Desktop")
+                base_dir = os.path.join(desktop, computer_name)
+
+                if not os.path.exists(base_dir):
+                    messagebox.showerror("Ошибка", f"Папка не найденаЖ\n{base_dir}")
+
+                ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                archive_base = os.path.join(desktop, f"{computer_name}{ts}")
+                shutil.make_archive(archive_base, "zip", root_dir=desktop, base_dir=computer_name)
+
+                archive_path = f"{archive_base}.zip"
+                messagebox.showinfo('Готово', f'Архив создан:\n{archive_path}')
+            except Exception as e:
+                messagebox.showerror("Ошибка", f"Не удалось создать архив:\n{e}")
 
     root = tk.Tk()
     app = TestLauncherApp(root)
