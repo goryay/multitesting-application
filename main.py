@@ -353,6 +353,7 @@ def run_gui():
             self.test_proc = None
             self.stop_flag = None
             self.autoscreen_thread = None
+            self.last_archive_path = None
 
             self.create_widgets()
 
@@ -406,6 +407,7 @@ def run_gui():
             tk.Button(self.root, text="Архив", command=self.archive_results).pack(pady=5)
             tk.Button(self.root, text="Удалить установленные компоненты",
                       command=self.run_uninstall_script).pack(pady=5)
+            tk.Button(self.root, text="Отправка архива на сервер", command=self.upload_last_archive).pack(pady=5)
             tk.Button(self.root, text="Выход", command=self.root.quit).pack(pady=5)
 
         def toggle_custom(self):
@@ -663,16 +665,50 @@ def run_gui():
                 base_dir = os.path.join(desktop, computer_name)
 
                 if not os.path.exists(base_dir):
-                    messagebox.showerror("Ошибка", f"Папка не найденаЖ\n{base_dir}")
+                    messagebox.showerror("Ошибка", f"Папка не найдена:\n{base_dir}")
+                    return
 
                 ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                archive_base = os.path.join(desktop, f"{computer_name}{ts}")
+                archive_base = os.path.join(desktop, f"{computer_name}_{ts}")
                 shutil.make_archive(archive_base, "zip", root_dir=desktop, base_dir=computer_name)
 
-                archive_path = f"{archive_base}.zip"
-                messagebox.showinfo('Готово', f'Архив создан:\n{archive_path}')
+                self.last_archive_path = f"{archive_base}.zip"
+                messagebox.showinfo('Готово', f'Архив создан:\n{self.last_archive_path}')
             except Exception as e:
                 messagebox.showerror("Ошибка", f"Не удалось создать архив:\n{e}")
+
+        def upload_last_archive(self):
+            try:
+                archive_path = self.last_archive_path
+                if not archive_path or not os.path.isfile(archive_path):
+                    computer_name = os.environ.get("COMPUTERNAME", "Unknown")
+                    desktop = os.path.join(os.path.expanduser("~"), "Desktop")
+                    pattern_prefix = f"{computer_name}_"
+                    candidates = [
+                        os.path.join(desktop, f) for f in os.listdir(desktop)
+                        if f.startswith(pattern_prefix) and f.endswith(".zip")
+                    ]
+                    if not candidates:
+                        messagebox.showerror("Ошибка", "Архив не найден. Сначала создайте архив.")
+                        return
+                    archive_path = max(candidates, key=os.path.getmtime)
+                    self.last_archive_path = archive_path
+
+                url = "http://10.0.6.39:3000/upload/reports"
+                args = ["cmd", "/c", "curl", "-sS", "-f", "-F", f'file=@{archive_path}', url]
+
+                completed = subprocess.run(args, capture_output=True, text=True)
+
+                if completed.returncode == 0:
+                    msg = completed.stdout.strip() or "Файл успешно загружен."
+                    messagebox.showinfo("Отправлено", f"{os.path.basename(archive_path)}\n\nОтвет сервера:\n{msg}")
+                else:
+                    err = (completed.stderr or completed.stdout or "").strip()
+                    raise RuntimeError(f"curl вернул код {completed.returncode}\n{err}")
+            except FileNotFoundError:
+                messagebox.showerror("Ошибка", "Не найден 'curl'. Убедись, что он доступен в PATH.")
+            except Exception as e:
+                messagebox.showerror("Ошибка", f"Не удалось отправить архив:\n{e}")
 
     root = tk.Tk()
     app = TestLauncherApp(root)
