@@ -3,8 +3,10 @@ from datetime import datetime
 import tkinter as tk
 from tkinter import messagebox
 
+
 def is_frozen() -> bool:
     return getattr(sys, "frozen", False)
+
 
 def resource_path(relative_path: str) -> str:
     if hasattr(sys, "_MEIPASS"):
@@ -12,6 +14,7 @@ def resource_path(relative_path: str) -> str:
     else:
         base_dir = os.path.dirname(sys.executable) if is_frozen() else os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base_dir, relative_path)
+
 
 # --------- постоянные пути/файлы ---------
 APPDIR = os.path.join(os.environ.get("LOCALAPPDATA", os.getcwd()), "TestLauncher")
@@ -27,6 +30,7 @@ if "--autoscreen" in sys.argv or "--screen" in sys.argv:
             import screen as screen_mod
         except Exception:
             import importlib.util
+
             scr_path = resource_path("screen.py")
             spec = importlib.util.spec_from_file_location("screen", scr_path)
             mod = importlib.util.module_from_spec(spec)
@@ -41,6 +45,7 @@ if "--autoscreen" in sys.argv or "--screen" in sys.argv:
             pass
     sys.exit(0)
 
+
 # ================= лог =================
 def log_resume(msg: str):
     try:
@@ -48,6 +53,7 @@ def log_resume(msg: str):
             f.write(f"{datetime.now():%Y-%m-%d %H:%M:%S} {msg}\n")
     except Exception:
         pass
+
 
 # ================= deps =================
 def install_dependencies_if_needed():
@@ -65,15 +71,18 @@ def install_dependencies_if_needed():
     env["PATH"] = r"C:\Program Files\PowerShell\7;" + env.get("PATH", "")
     subprocess.run(["powershell.exe", "-ExecutionPolicy", "Bypass", "-File", script_path], check=True, env=env)
 
+
 # =============== автозапуск (HKCU\Run) ===============
 def _quoted(s: str) -> str:
     return f'"{s}"'
+
 
 def _current_launcher_command_autorun() -> str:
     if is_frozen():
         return f'{_quoted(sys.executable)} --autorun'
     else:
         return f'{_quoted(sys.executable)} {_quoted(os.path.abspath(__file__))} --autorun'
+
 
 def ensure_run_registry():
     try:
@@ -84,6 +93,7 @@ def ensure_run_registry():
         log_resume("[autostart] Run-key set OK")
     except Exception as e:
         log_resume(f"[autostart] Run-key set fail: {e}")
+
 
 def remove_run_registry():
     try:
@@ -97,6 +107,7 @@ def remove_run_registry():
                 pass
     except Exception as e:
         log_resume(f"[autostart] Run-key remove fail: {e}")
+
 
 def nuke_legacy_autostart():
     try:
@@ -114,6 +125,7 @@ def nuke_legacy_autostart():
     except Exception:
         pass
 
+
 def diag_autostart():
     try:
         import winreg
@@ -127,6 +139,7 @@ def diag_autostart():
     except Exception as e:
         log_resume(f"[diag] Run-key read fail: {e}")
 
+
 # ============ мягкое завершение окон тестов ============
 def _activate_window_by_title(title_substr: str) -> bool:
     import win32gui, win32con
@@ -135,6 +148,7 @@ def _activate_window_by_title(title_substr: str) -> bool:
             title = win32gui.GetWindowText(hwnd)
             if title_substr.lower() in title.lower():
                 result.append(hwnd)
+
     hwnds = []
     win32gui.EnumWindows(cb, hwnds)
     if hwnds:
@@ -143,34 +157,48 @@ def _activate_window_by_title(title_substr: str) -> bool:
         return True
     return False
 
+
 def gracefully_finish_tests():
     import pyautogui, time as _t
     fur_closed = False
     if _activate_window_by_title("FurMark"):
-        _t.sleep(0.5); pyautogui.press("esc"); fur_closed = True; _t.sleep(1)
+        _t.sleep(0.5);
+        pyautogui.press("esc");
+        fur_closed = True;
+        _t.sleep(1)
     fio_closed = False
     if _activate_window_by_title("fio"):
-        _t.sleep(0.5); pyautogui.hotkey("ctrl", "c"); fio_closed = True; _t.sleep(1)
+        _t.sleep(0.5);
+        pyautogui.hotkey("ctrl", "c");
+        fio_closed = True;
+        _t.sleep(1)
     elif _activate_window_by_title("cmd"):
-        _t.sleep(0.5); pyautogui.hotkey("ctrl", "c"); fio_closed = True; _t.sleep(1)
+        _t.sleep(0.5);
+        pyautogui.hotkey("ctrl", "c");
+        fio_closed = True;
+        _t.sleep(1)
     _t.sleep(3)
     print(f"FurMark closed: {fur_closed}, fio closed: {fio_closed}")
+
 
 # ================= состояние =================
 def _log_state_location():
     log_resume(f"[state] primary={STATE_FILE}")
     log_resume(f"[state] legacy={LEGACY_STATE_FILE}")
 
+
 def save_state(params: dict):
     try:
         params = dict(params)
         params.setdefault("launcher_path", sys.executable if is_frozen() else sys.executable)
-        params.setdefault("workdir", os.path.dirname(sys.executable) if is_frozen() else os.path.dirname(os.path.abspath(__file__)))
+        params.setdefault("workdir", os.path.dirname(sys.executable) if is_frozen() else os.path.dirname(
+            os.path.abspath(__file__)))
 
         os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
         with open(STATE_FILE, "w", encoding="utf-8") as f:
             json.dump(params, f, ensure_ascii=False)
-            f.flush(); os.fsync(f.fileno())
+            f.flush();
+            os.fsync(f.fileno())
 
         _log_state_location()
         ensure_run_registry()
@@ -178,6 +206,7 @@ def save_state(params: dict):
         log_resume("[state] saved OK")
     except Exception as e:
         log_resume(f"[state] save failed: {e}")
+
 
 def load_state():
     try:
@@ -202,6 +231,7 @@ def load_state():
         log_resume(f"[state] load failed: {e}")
     return None
 
+
 def clear_state():
     try:
         for path in (STATE_FILE, LEGACY_STATE_FILE):
@@ -215,6 +245,7 @@ def clear_state():
     except Exception as e:
         log_resume(f"[state] clear failed: {e}")
 
+
 # ============== SINGLE INSTANCE ==============
 def acquire_single_instance_lock():
     import msvcrt
@@ -226,6 +257,7 @@ def acquire_single_instance_lock():
         return f
     except OSError:
         return None
+
 
 # ============== HEADLESS RESUME ==============
 def headless_resume(state: dict):
@@ -332,6 +364,7 @@ def headless_resume(state: dict):
         clear_state()
         log_resume("[resume] state cleared")
 
+
 # ================= GUI =================
 def run_gui():
     class TestLauncherApp:
@@ -403,7 +436,6 @@ def run_gui():
 
             tk.Button(self.root, text="Сделать скриншот", command=self.take_screenshot).pack(pady=5)
             tk.Button(self.root, text="Создать отчёт", command=self.generate_report).pack(pady=5)
-            tk.Button(self.root, text="Создать отчёт HTML", command=self.generate_report_html).pack(pady=5)
             tk.Button(self.root, text="Архив", command=self.archive_results).pack(pady=5)
             tk.Button(self.root, text="Удалить установленные компоненты",
                       command=self.run_uninstall_script).pack(pady=5)
@@ -519,7 +551,8 @@ def run_gui():
 
                 def autoscreen_worker():
                     exe_path = sys.executable if is_frozen() else os.path.abspath("main.py")
-                    hour = 3600; elapsed = 0
+                    hour = 3600;
+                    elapsed = 0
                     while not self.stop_flag.is_set() and elapsed < duration_seconds:
                         to_sleep = min(hour, duration_seconds - elapsed)
                         if to_sleep <= 0: break
@@ -581,39 +614,6 @@ def run_gui():
             img = pyautogui.screenshot()
             img.save(os.path.join(screens_dir, f"screenshot_{now}.png"))
 
-        def generate_report_html(self):
-            try:
-                computer_name = os.environ.get("COMPUTERNAME", "Unknown")
-                desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
-                base_dir = os.path.join(desktop_path, computer_name)
-                reports_dir = os.path.join(base_dir, "Reports")
-                os.makedirs(reports_dir, exist_ok=True)
-
-                html_report = resource_path("Generate_SoftwareReport.ps1")
-                pwsh_path = r"C:\Program Files\PowerShell\7\pwsh.exe"
-
-                result = subprocess.run([
-                    pwsh_path, "-ExecutionPolicy", "Bypass", "-File", html_report,
-                    "-ComputerName", computer_name,
-                    "-OutputFolder", reports_dir,
-                    "-IncludeSoftware"
-                ],
-                    capture_output=True,
-                    text=True,
-                    check=True)
-
-                print("STDOUT:", result.stdout)
-                print("STDERR:", result.stderr)
-
-            except FileNotFoundError:
-                print("Ошибка: скрипт Generate_SoftwareReport.ps1 не найден")
-            except subprocess.CalledProcessError as e:
-                print(f"Ошибка выполнения скрипта:\n{e}")
-                print("STDOUT:", e.stdout)
-                print("STDERR:", e.stderr)
-            except Exception as e:
-                print(f"Произошла непредвиденная ошибка:\n{e}")
-
         def generate_report(self):
             from tkinter import messagebox
             try:
@@ -626,6 +626,7 @@ def run_gui():
                 os.makedirs(reports_dir, exist_ok=True)
                 os.makedirs(screens_dir, exist_ok=True)
 
+                html_report = resource_path("Generate_SoftwareReport.ps1")
                 aida_path = resource_path(r"SoftForTest\AIDA64\AIDA64Port.exe")
                 script_path = resource_path("aida_fio_furmark.ps1")
                 smart_script = resource_path("smart.ps1")
@@ -639,6 +640,15 @@ def run_gui():
                     f"-outputFolder '{reports_dir}' "
                     f"-aida64FullPath '{aida_path}'"
                 )
+
+                result = subprocess.run([pwsh_path, "-ExecutionPolicy", "Bypass", "-File", html_report,
+                                         "-ComputerName", computer_name,
+                                         "-OutputFolder", reports_dir,
+                                         "-IncludeSoftware"],
+                                        capture_output=True, text=True, check=True)
+
+                print("STDOUT:", result.stdout)
+                print("STDERR:", result.stderr)
 
                 subprocess.Popen([pwsh_path, "-ExecutionPolicy", "Bypass", "-Command", ps_aida], env=env)
 
@@ -655,8 +665,12 @@ def run_gui():
                 messagebox.showinfo("Успешно", f"Все отчёты и скриншоты сохранены в:\n{reports_dir}")
             except subprocess.CalledProcessError as e:
                 messagebox.showerror("Ошибка", f"Команда вернула ошибку:\n{e}")
+                print("STDOUT:", e.stdout)
+                print("STDERR:", e.stderr)
             except Exception as e:
                 messagebox.showerror("Ошибка", f"Ошибка при создании отчета:\n{e}")
+            except FileNotFoundError as e:
+                print("Ошибка: скрипт Generate_SoftwareReport.ps1 не найден")
 
         def archive_results(self):
             try:
@@ -713,6 +727,7 @@ def run_gui():
     root = tk.Tk()
     app = TestLauncherApp(root)
     root.mainloop()
+
 
 # ==================== ВХОД ====================
 if __name__ == "__main__":
