@@ -23,6 +23,19 @@ STATE_FILE = os.path.join(APPDIR, "test_state.json")
 LEGACY_STATE_FILE = os.path.join(os.path.expanduser("~"), "Desktop", "test_state.json")
 LOG_FILE = os.path.join(APPDIR, "resume.log")
 
+
+def build_screen_cmd(flag: str) -> list[str]:
+    """
+    Команда для запуска скринера (--screen / --autoscreen) тем же Python:
+    - в exe:   main.exe --flag
+    - в исходниках: python main.py --flag
+    """
+    if is_frozen():
+        return [sys.executable, flag]
+    else:
+        return [sys.executable, os.path.abspath(__file__), flag]
+
+
 # ============= быстрые флаги скринера (до локера!) =============
 if "--autoscreen" in sys.argv or "--screen" in sys.argv:
     try:
@@ -143,6 +156,7 @@ def diag_autostart():
 # ============ мягкое завершение окон тестов ============
 def _activate_window_by_title(title_substr: str) -> bool:
     import win32gui, win32con
+
     def cb(hwnd, result):
         if win32gui.IsWindowVisible(hwnd):
             title = win32gui.GetWindowText(hwnd)
@@ -162,20 +176,20 @@ def gracefully_finish_tests():
     import pyautogui, time as _t
     fur_closed = False
     if _activate_window_by_title("FurMark"):
-        _t.sleep(0.5);
-        pyautogui.press("esc");
-        fur_closed = True;
+        _t.sleep(0.5)
+        pyautogui.press("esc")
+        fur_closed = True
         _t.sleep(1)
     fio_closed = False
     if _activate_window_by_title("fio"):
-        _t.sleep(0.5);
-        pyautogui.hotkey("ctrl", "c");
-        fio_closed = True;
+        _t.sleep(0.5)
+        pyautogui.hotkey("ctrl", "c")
+        fio_closed = True
         _t.sleep(1)
     elif _activate_window_by_title("cmd"):
-        _t.sleep(0.5);
-        pyautogui.hotkey("ctrl", "c");
-        fio_closed = True;
+        _t.sleep(0.5)
+        pyautogui.hotkey("ctrl", "c")
+        fio_closed = True
         _t.sleep(1)
     _t.sleep(3)
     print(f"FurMark closed: {fur_closed}, fio closed: {fio_closed}")
@@ -191,13 +205,15 @@ def save_state(params: dict):
     try:
         params = dict(params)
         params.setdefault("launcher_path", sys.executable if is_frozen() else sys.executable)
-        params.setdefault("workdir", os.path.dirname(sys.executable) if is_frozen() else os.path.dirname(
-            os.path.abspath(__file__)))
+        params.setdefault(
+            "workdir",
+            os.path.dirname(sys.executable) if is_frozen() else os.path.dirname(os.path.abspath(__file__))
+        )
 
         os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
         with open(STATE_FILE, "w", encoding="utf-8") as f:
             json.dump(params, f, ensure_ascii=False)
-            f.flush();
+            f.flush()
             os.fsync(f.fileno())
 
         _log_state_location()
@@ -257,6 +273,104 @@ def acquire_single_instance_lock():
         return f
     except OSError:
         return None
+
+
+# ============== АВТО-ОТЧЁТ + АРХИВ (общая функция) ==============
+def run_reports_and_archive_silent():
+    """
+    Используется:
+      - в headless_resume (после автозапуска);
+      - логика повторяет generate_report + archive_results, но без Tk/окон.
+    """
+    try:
+        computer_name = os.environ.get("COMPUTERNAME", "Unknown")
+        desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
+        base_dir = os.path.join(desktop_path, computer_name)
+        reports_dir = os.path.join(base_dir, "Reports")
+        screens_dir = os.path.join(base_dir, "Screens")
+
+        os.makedirs(reports_dir, exist_ok=True)
+        os.makedirs(screens_dir, exist_ok=True)
+
+        html_report = resource_path("Generate_SoftwareReport.ps1")
+        aida_path = resource_path(r"SoftForTest\AIDA64\AIDA64Port.exe")
+        script_path = resource_path("aida_fio_furmark.ps1")
+        smart_script = resource_path("smart.ps1")
+        pwsh_path = r"C:\Program Files\PowerShell\7\pwsh.exe"
+
+        env = os.environ.copy()
+        env["PATH"] = r"C:\Program Files\PowerShell\7;" + env.get("PATH", "")
+
+        # 1) Основной HTML-отчёт
+        if os.path.exists(html_report):
+            try:
+                res = subprocess.run(
+                    [pwsh_path, "-ExecutionPolicy", "Bypass", "-File", html_report,
+                     "-ComputerName", computer_name,
+                     "-OutputFolder", reports_dir,
+                     "-IncludeSoftware"],
+                    capture_output=True, text=True, check=False, env=env
+                )
+                log_resume(f"[report] Generate_SoftwareReport rc={res.returncode}")
+                if res.stdout:
+                    log_resume(f"[report] HTML stdout tail: {res.stdout[-800:]}")
+                if res.stderr:
+                    log_resume(f"[report] HTML stderr tail: {res.stderr[-800:]}")
+            except Exception as e:
+                log_resume(f"[report] HTML report error: {e}")
+        else:
+            log_resume(f"[report] HTML script not found: {html_report}")
+
+        # 2) AIDA64 (Generate-Report из aida_fio_furmark.ps1)
+        if os.path.exists(script_path):
+            try:
+                ps_aida = (
+                    f". '{script_path}'; "
+                    f"Generate-Report -computerName '{computer_name}' "
+                    f"-outputFolder '{reports_dir}' "
+                    f"-aida64FullPath '{aida_path}'"
+                )
+                subprocess.Popen(
+                    [pwsh_path, "-ExecutionPolicy", "Bypass", "-Command", ps_aida],
+                    env=env
+                )
+                log_resume("[report] AIDA Generate-Report started")
+            except Exception as e:
+                log_resume(f"[report] AIDA Generate-Report error: {e}")
+        else:
+            log_resume(f"[report] aida_fio_furmark.ps1 not found: {script_path}")
+
+        # 3) SMART
+        if os.path.exists(smart_script):
+            try:
+                smart_output = os.path.join(
+                    reports_dir, f"smart_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.txt"
+                )
+                res = subprocess.run(
+                    [pwsh_path, "-ExecutionPolicy", "Bypass", "-File", smart_script, smart_output],
+                    check=False, env=env, capture_output=True, text=True
+                )
+                log_resume(f"[report] smart.ps1 rc={res.returncode}")
+                if res.stdout:
+                    log_resume(f"[report] SMART stdout tail: {res.stdout[-800:]}")
+                if res.stderr:
+                    log_resume(f"[report] SMART stderr tail: {res.stderr[-800:]}")
+            except Exception as e:
+                log_resume(f"[report] SMART error: {e}")
+        else:
+            log_resume(f"[report] smart.ps1 not found: {smart_script}")
+
+        # 4) Архив
+        try:
+            ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            archive_base = os.path.join(desktop_path, f"{computer_name}_{ts}")
+            shutil.make_archive(archive_base, "zip", root_dir=desktop_path, base_dir=computer_name)
+            log_resume(f"[report] archive created: {archive_base}.zip")
+        except Exception as e:
+            log_resume(f"[report] archive creation failed: {e}")
+
+    except Exception as e:
+        log_resume(f"[report] auto report/archive failed: {e}")
 
 
 # ============== HEADLESS RESUME ==============
@@ -329,22 +443,29 @@ def headless_resume(state: dict):
     stop_flag = threading.Event()
 
     def autoscreen_worker():
-        exe_path = state.get("launcher_path") or (
-            sys.executable if is_frozen() else os.path.abspath("main.py")
-        )
-        hour = 3600
-        elapsed = 0
-        while not stop_flag.is_set() and elapsed < duration_seconds:
-            to_sleep = min(hour, duration_seconds - elapsed)
-            if to_sleep <= 0:
-                break
-            if stop_flag.wait(to_sleep):
-                break
-            try:
-                subprocess.Popen([exe_path, "--autoscreen"], shell=True, cwd=workdir)
-            except Exception as e:
-                log_resume(f"[resume] autoscreen fail: {e}")
-            elapsed += to_sleep
+        pre_offset = 300  # 5 минут до конца
+        # Однократный автоскрин для AIDA/FurMark/FIO
+
+        # Короткие тесты: середина, но не раньше 60 секунд
+        if duration_seconds <= pre_offset + 60:
+            delay = max(duration_seconds // 2, 60)
+        else:
+            # Длинные: за 5 минут до окончания
+            delay = duration_seconds - pre_offset
+
+        if delay <= 0:
+            delay = max(60, duration_seconds // 2)
+
+        if stop_flag.wait(delay):
+            # Тест уже остановлен раньше времени
+            return
+
+        try:
+            cmd = build_screen_cmd("--autoscreen")
+            subprocess.Popen(cmd, shell=False, cwd=workdir)
+            log_resume(f"[resume] autoscreen done at t={delay}s")
+        except Exception as e:
+            log_resume(f"[resume] autoscreen fail: {e}")
 
     threading.Thread(target=autoscreen_worker, daemon=True).start()
     log_resume("[resume] threads spawned OK")
@@ -353,12 +474,17 @@ def headless_resume(state: dict):
     log_resume(f"[resume] pwsh finished rc={rc}")
 
     try:
-        exe_path = state.get("launcher_path") or (
-            sys.executable if is_frozen() else os.path.abspath("main.py")
-        )
-        subprocess.run([exe_path, "--screen"], shell=True, cwd=workdir, check=False)
+        cmd = build_screen_cmd("--screen")
+        subprocess.run(cmd, shell=False, cwd=workdir, check=False)
     except Exception as e:
         log_resume(f"[resume] final screen fail: {e}")
+
+    # авто-отчёт + архив в headless-режиме
+    try:
+        run_reports_and_archive_silent()
+    except Exception as e:
+        log_resume(f"[resume] auto report/archive fail: {e}")
+
     finally:
         stop_flag.set()
         clear_state()
@@ -421,8 +547,10 @@ def run_gui():
             custom_time_frame = tk.Frame(self.root)
             custom_time_frame.pack()
             tk.Label(custom_time_frame, text="Часы: ").grid(row=0, column=0)
-            self.custom_hour_spin = tk.Spinbox(custom_time_frame, from_=0, to=24, width=5, state="disabled",
-                                               textvariable=self.custom_hour)
+            self.custom_hour_spin = tk.Spinbox(
+                custom_time_frame, from_=0, to=24, width=5, state="disabled",
+                textvariable=self.custom_hour
+            )
             self.custom_hour_spin.grid(row=0, column=1)
 
             self.disk_frame = tk.LabelFrame(self.root, text="Выберите диски для FIO:")
@@ -550,14 +678,19 @@ def run_gui():
                 self.stop_btn.config(state="normal")
 
                 def autoscreen_worker():
-                    exe_path = sys.executable if is_frozen() else os.path.abspath("main.py")
-                    hour = 3600;
+                    hour = 3600
                     elapsed = 0
                     while not self.stop_flag.is_set() and elapsed < duration_seconds:
                         to_sleep = min(hour, duration_seconds - elapsed)
-                        if to_sleep <= 0: break
-                        if self.stop_flag.wait(to_sleep): break
-                        subprocess.Popen([exe_path, "--autoscreen"], shell=True, cwd=workdir)
+                        if to_sleep <= 0:
+                            break
+                        if self.stop_flag.wait(to_sleep):
+                            break
+                        try:
+                            cmd = build_screen_cmd("--autoscreen")
+                            subprocess.Popen(cmd, shell=False, cwd=workdir)
+                        except Exception as e:
+                            log_resume(f"[gui] autoscreen fail: {e}")
                         elapsed += to_sleep
 
                 self.autoscreen_thread = threading.Thread(target=autoscreen_worker, daemon=True)
@@ -568,8 +701,28 @@ def run_gui():
                     self.stop_flag.set()
                     self.stop_btn.config(state="disabled")
                     time.sleep(2)
-                    exe_path = sys.executable if is_frozen() else os.path.abspath("main.py")
-                    subprocess.run([exe_path, "--screen"], shell=True, cwd=workdir, check=False)
+                    try:
+                        cmd = build_screen_cmd("--screen")
+                        subprocess.run(cmd, shell=False, cwd=workdir, check=False)
+                    except Exception as e:
+                        log_resume(f"[gui] final screen fail: {e}")
+
+                    # Автоматический отчёт + архив на главном потоке Tk
+                    def do_reports_and_archive():
+                        try:
+                            self.generate_report()
+                        except Exception as e_inner:
+                            log_resume(f"[gui] auto-generate_report fail: {e_inner}")
+                        try:
+                            self.archive_results()
+                        except Exception as e_inner:
+                            log_resume(f"[gui] auto-archive fail: {e_inner}")
+
+                    try:
+                        self.root.after(0, do_reports_and_archive)
+                    except Exception as e:
+                        log_resume(f"[gui] schedule report/archive fail: {e}")
+
                     clear_state()
 
                 threading.Thread(target=wait_and_final_screens, daemon=True).start()
@@ -583,8 +736,11 @@ def run_gui():
             self.stop_btn.config(state="disabled")
             time.sleep(2)
             workdir = os.path.dirname(sys.executable) if is_frozen() else os.path.dirname(os.path.abspath(__file__))
-            exe_path = sys.executable if is_frozen() else os.path.abspath("main.py")
-            subprocess.run([exe_path, "--screen"], shell=True, cwd=workdir, check=False)
+            try:
+                cmd = build_screen_cmd("--screen")
+                subprocess.run(cmd, shell=False, cwd=workdir, check=False)
+            except Exception as e:
+                log_resume(f"[gui] stop_test screen fail: {e}")
             clear_state()
 
         def run_uninstall_script(self):
@@ -641,26 +797,32 @@ def run_gui():
                     f"-aida64FullPath '{aida_path}'"
                 )
 
-                result = subprocess.run([pwsh_path, "-ExecutionPolicy", "Bypass", "-File", html_report,
-                                         "-ComputerName", computer_name,
-                                         "-OutputFolder", reports_dir,
-                                         "-IncludeSoftware"],
-                                        capture_output=True, text=True, check=True)
+                result = subprocess.run(
+                    [pwsh_path, "-ExecutionPolicy", "Bypass", "-File", html_report,
+                     "-ComputerName", computer_name,
+                     "-OutputFolder", reports_dir,
+                     "-IncludeSoftware"],
+                    capture_output=True, text=True, check=True
+                )
 
                 print("STDOUT:", result.stdout)
                 print("STDERR:", result.stderr)
 
-                subprocess.Popen([pwsh_path, "-ExecutionPolicy", "Bypass", "-Command", ps_aida], env=env)
+                # subprocess.Popen([pwsh_path, "-ExecutionPolicy", "Bypass", "-Command", ps_aida], env=env)
+                #
+                # try:
+                #     import screen as screen_mod
+                #     screen_mod.capture_test_windows()
+                # except Exception:
+                #     self.take_screenshot()
 
-                try:
-                    import screen as screen_mod
-                    screen_mod.capture_test_windows()
-                except Exception:
-                    self.take_screenshot()
-
-                smart_output = os.path.join(reports_dir, f"smart_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.txt")
-                subprocess.run([pwsh_path, "-ExecutionPolicy", "Bypass", "-File", smart_script, smart_output],
-                               check=True, env=env)
+                smart_output = os.path.join(
+                    reports_dir, f"smart_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.txt"
+                )
+                subprocess.run(
+                    [pwsh_path, "-ExecutionPolicy", "Bypass", "-File", smart_script, smart_output],
+                    check=True, env=env
+                )
 
                 messagebox.showinfo("Успешно", f"Все отчёты и скриншоты сохранены в:\n{reports_dir}")
             except subprocess.CalledProcessError as e:
@@ -669,7 +831,7 @@ def run_gui():
                 print("STDERR:", e.stderr)
             except Exception as e:
                 messagebox.showerror("Ошибка", f"Ошибка при создании отчета:\n{e}")
-            except FileNotFoundError as e:
+            except FileNotFoundError:
                 print("Ошибка: скрипт Generate_SoftwareReport.ps1 не найден")
 
         def archive_results(self):
