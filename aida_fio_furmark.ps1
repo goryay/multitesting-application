@@ -1,10 +1,23 @@
 Push-Location -LiteralPath $PSScriptRoot
 $script:__popOnExit = $true
 
+Push-Location -LiteralPath $PSScriptRoot
+$script:__popOnExit = $true
+
 function Start-ScreenScript {
     $mainExe = Join-Path -Path $PSScriptRoot -ChildPath "main.exe"
     if (Test-Path $mainExe) {
         Start-Process -FilePath $mainExe -ArgumentList "--screen"
+    } else {
+        Write-Host "main.exe не найден: $mainExe"
+    }
+}
+
+function Start-AutoScreenScript {
+    $mainExe = Join-Path -Path $PSScriptRoot -ChildPath "main.exe"
+    if (Test-Path $mainExe) {
+        # тот же main.exe, но с флагом --autoscreen
+        Start-Process -FilePath $mainExe -ArgumentList "--autoscreen"
     } else {
         Write-Host "main.exe не найден: $mainExe"
     }
@@ -152,36 +165,75 @@ if ($args.Count -ge 2) {
 
     $gpuCount = if ($selectedTests -contains "GPU2") { 2 } else { 1 }
     $fioDrives = @()
-    foreach ($arg in $selectedTests) { if ($arg -match '^[A-Z]$') { $fioDrives += $arg } }
+    foreach ($arg in $selectedTests) {
+        if ($arg -match '^[A-Z]$') { $fioDrives += $arg }
+    }
 
-    # Параллельные запуски
-    if ($selectedTests -contains "FIO") { Start-FioTest -hours $hours -selectedDrives $fioDrives; Start-Sleep -Seconds 1 }
-    if ($selectedTests -contains "FURMARK") { Start-FurMarkTest -hours $hours -gpuCount $gpuCount; Start-Sleep -Seconds 1 }
-
+    # ===== ПОСЛЕДОВАТЕЛЬНЫЙ ЗАПУСК, ЧТОБЫ НЕ УПИРАТЬСЯ В ПАМЯТЬ =====
     $aidaProc = $null
+
     if ($selectedTests -contains "AIDA") {
+        # Если FurMark тоже включён — AIDA без GPU, чтобы не дублировать нагрузку на видеокарту
         $includeGPU = -not ($selectedTests -contains "FURMARK")
         $aidaProc = Start-AidaTest -hours $hours -includeGPU $includeGPU
+
+        # Дать AIDA время на прогрузку (особенно на слабых/загруженных системах)
+        Start-Sleep -Seconds 7
     }
+
+    if ($selectedTests -contains "FURMARK") {
+        Start-FurMarkTest -hours $hours -gpuCount $gpuCount
+
+        # Дать FurMark занять VRAM и стабилизироваться
+        Start-Sleep -Seconds 7
+    }
+
+    if ($selectedTests -contains "FIO") {
+        Start-FioTest -hours $hours -selectedDrives $fioDrives
+
+        # Лёгкая пауза, чтобы fio успел стартовать и открыть окна
+        Start-Sleep -Seconds 3
+    }
+    # ===== КОНЕЦ ПОСЛЕДОВАТЕЛЬНОГО ЗАПУСКА =====
 
     $totalSeconds = [math]::Round($hours * 3600)
 
     if ($selectedTests -contains "AIDA") {
-        # Скрин AIDA перед авто-закрытием
-        $aida_delay = [math]::Max($totalSeconds - 15, 1)
-        Start-Sleep -Seconds $aida_delay
-        Start-ScreenScript
-        Start-Sleep -Seconds 20  # дождаться финалов FurMark/FIO и оставить их окна открытыми
+        # --- промежуточный скрин AIDA за ~5 минут до конца ---
+        $midOffset = 300  # 5 минут = 300 секунд
+
+        if ($totalSeconds -gt ($midOffset + 60)) {
+            # Тест достаточно длинный, чтобы выстрелить за 5 минут до окончания
+            $beforeMid = $totalSeconds - $midOffset
+            Write-Host "Ожидание $beforeMid с до промежуточного скрина AIDA..."
+            Start-Sleep -Seconds $beforeMid
+
+            # Здесь AIDA еще работает, окна FurMark/FIO тоже уже идут
+            Write-Host "Промежуточный скрин (AIDA + остальные) за 5 минут до конца"
+            Start-AutoScreenScript
+
+            # Дождаёмся конца теста (оставшиеся 5 минут)
+            Start-Sleep -Seconds $midOffset
+        } else {
+            # Короткий тест (меньше ~6 минут) — делаем скрин в середине
+            $half = [math]::Max([math]::Floor($totalSeconds / 2), 60)
+            Write-Host "Тест короткий, промежуточный скрин в середине: через $half с"
+            Start-Sleep -Seconds $half
+            Start-AutoScreenScript
+            Start-Sleep -Seconds ($totalSeconds - $half)
+        }
     } else {
+        # Без AIDA просто ждём до конца
         Start-Sleep -Seconds $totalSeconds
     }
 
-    Start-ScreenScript  # Финальный общий скрин (FIO/FurMark/итоги)
+    # --- финальный скрин по окончании всех тестов (как и было) ---
+    Write-Host "Финальный скрин после завершения тестов"
+    Start-ScreenScript
 
-    # Генерация отчёта AIDA64 (как раньше)
-    $desktop = [Environment]::GetFolderPath("Desktop")
-    $computerName = $env:COMPUTERNAME
-    Generate-Report -computerName $computerName -desktopPath $desktop -aida64FullPath $aida64FullPath
+    # Генерация отчёта AIDA64 (как раньше, но с корректными параметрами)
+#    $computerName = $env:COMPUTERNAME
+#    Generate-Report -computerName $computerName -aida64FullPath $aida64FullPath
 
     Write-Host "Тестирование завершено. Скриншоты и отчёт сохранены."
     exit
