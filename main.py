@@ -275,13 +275,8 @@ def acquire_single_instance_lock():
         return None
 
 
-# ============== АВТО-ОТЧЁТ + АРХИВ (общая функция) ==============
+# ============== АВТО-ОТЧЁТ + АРХИВ (headless) ==============
 def run_reports_and_archive_silent():
-    """
-    Используется:
-      - в headless_resume (после автозапуска);
-      - логика повторяет generate_report + archive_results, но без Tk/окон.
-    """
     try:
         computer_name = os.environ.get("COMPUTERNAME", "Unknown")
         desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
@@ -301,7 +296,7 @@ def run_reports_and_archive_silent():
         env = os.environ.copy()
         env["PATH"] = r"C:\Program Files\PowerShell\7;" + env.get("PATH", "")
 
-        # 1) Основной HTML-отчёт
+        # 1) основной HTML-отчёт
         if os.path.exists(html_report):
             try:
                 res = subprocess.run(
@@ -321,7 +316,7 @@ def run_reports_and_archive_silent():
         else:
             log_resume(f"[report] HTML script not found: {html_report}")
 
-        # 2) AIDA64 (Generate-Report из aida_fio_furmark.ps1)
+        # 2) отчёт AIDA через Generate-Report
         if os.path.exists(script_path):
             try:
                 ps_aida = (
@@ -389,7 +384,6 @@ def headless_resume(state: dict):
     pwsh_path = r"C:\Program Files\PowerShell\7\pwsh.exe"
     script_full_path = resource_path("aida_fio_furmark.ps1")
 
-    # безопасно выбираем рабочую папку
     desired_workdir = state.get("workdir") or (
         os.path.dirname(sys.executable) if is_frozen()
         else os.path.dirname(os.path.abspath(__file__))
@@ -398,7 +392,6 @@ def headless_resume(state: dict):
         log_resume(f"[resume] desired workdir missing: {desired_workdir}")
         desired_workdir = os.path.dirname(sys.executable) if is_frozen() else os.path.dirname(os.path.abspath(__file__))
         log_resume(f"[resume] fallback workdir: {desired_workdir}")
-        # обновим state
         try:
             state["workdir"] = desired_workdir
             with open(STATE_FILE, "w", encoding="utf-8") as f:
@@ -419,7 +412,6 @@ def headless_resume(state: dict):
     except Exception as e:
         log_resume(f"[resume] chdir fail: {e}")
 
-    # лог всегда в APPDIR
     os.makedirs(APPDIR, exist_ok=True)
     logfile_path = os.path.join(APPDIR, "test_launcher_log.txt")
 
@@ -439,25 +431,19 @@ def headless_resume(state: dict):
             log_resume(f"[resume][FATAL] cannot start pwsh: {e}")
             return
 
-    # <<< ВАЖНО: создаём флаг до воркера
     stop_flag = threading.Event()
 
     def autoscreen_worker():
         pre_offset = 300  # 5 минут до конца
-        # Однократный автоскрин для AIDA/FurMark/FIO
-
-        # Короткие тесты: середина, но не раньше 60 секунд
         if duration_seconds <= pre_offset + 60:
             delay = max(duration_seconds // 2, 60)
         else:
-            # Длинные: за 5 минут до окончания
             delay = duration_seconds - pre_offset
 
         if delay <= 0:
             delay = max(60, duration_seconds // 2)
 
         if stop_flag.wait(delay):
-            # Тест уже остановлен раньше времени
             return
 
         try:
@@ -479,12 +465,10 @@ def headless_resume(state: dict):
     except Exception as e:
         log_resume(f"[resume] final screen fail: {e}")
 
-    # авто-отчёт + архив в headless-режиме
     try:
         run_reports_and_archive_silent()
     except Exception as e:
         log_resume(f"[resume] auto report/archive fail: {e}")
-
     finally:
         stop_flag.set()
         clear_state()
@@ -617,7 +601,6 @@ def run_gui():
                 cb.config(state=("normal" if enable else "disabled"))
 
         def run_test(self):
-            from tkinter import messagebox
             try:
                 install_dependencies_if_needed()
             except Exception as e:
@@ -707,7 +690,7 @@ def run_gui():
                     except Exception as e:
                         log_resume(f"[gui] final screen fail: {e}")
 
-                    # Автоматический отчёт + архив на главном потоке Tk
+                    # авто-отчёт + архив через GUI-методы
                     def do_reports_and_archive():
                         try:
                             self.generate_report()
@@ -744,7 +727,6 @@ def run_gui():
             clear_state()
 
         def run_uninstall_script(self):
-            from tkinter import messagebox
             try:
                 script_path = resource_path("AllUnin.ps1")
                 pwsh_path = r"C:\Program Files\PowerShell\7\pwsh.exe"
@@ -771,7 +753,6 @@ def run_gui():
             img.save(os.path.join(screens_dir, f"screenshot_{now}.png"))
 
         def generate_report(self):
-            from tkinter import messagebox
             try:
                 computer_name = os.environ.get("COMPUTERNAME", "Unknown")
                 desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
@@ -808,13 +789,19 @@ def run_gui():
                 print("STDOUT:", result.stdout)
                 print("STDERR:", result.stderr)
 
-                # subprocess.Popen([pwsh_path, "-ExecutionPolicy", "Bypass", "-Command", ps_aida], env=env)
-                #
-                # try:
-                #     import screen as screen_mod
-                #     screen_mod.capture_test_windows()
-                # except Exception:
-                #     self.take_screenshot()
+                # отчёт AIDA64
+                subprocess.Popen(
+                    [pwsh_path, "-ExecutionPolicy", "Bypass", "-Command", ps_aida],
+                    env=env
+                )
+
+                # 🔚 финальные скрины всех окон тестов
+                try:
+                    import screen as screen_mod
+                    screen_mod.capture_test_windows()
+                except Exception as e:
+                    log_resume(f"[gui] generate_report screen fail: {e}")
+                    self.take_screenshot()
 
                 smart_output = os.path.join(
                     reports_dir, f"smart_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.txt"

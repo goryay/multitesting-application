@@ -4,57 +4,23 @@ import win32gui
 import win32con
 import win32com.client
 from mss import mss
-from PIL import Image, ImageStat
-
-# ---------- ЛОГИКА ДЛЯ AIDA64 (СТАРАЯ, КОТОРАЯ У ТЕБЯ РАБОТАЛА) ----------
-
-def is_chart_drawn(img: Image.Image) -> bool:
-    """Проверка, что нижняя часть окна AIDA64 НЕ полностью чёрная."""
-    width, height = img.size
-    bottom_crop = img.crop((0, int(height * 2 / 3), width, height))
-    stat = ImageStat.Stat(bottom_crop)
-    avg = stat.mean
-    return not (avg[0] < 10 and avg[1] < 10 and avg[2] < 10)
-
-
-def wait_for_aida_ready(sct, rect, max_wait: int = 10) -> Image.Image:
-    """
-    Ждём, пока окно AIDA64 нормально отрисуется:
-    - фон не чисто белый
-    - графики внизу не полностью чёрные.
-    """
-    img = None
-    for attempt in range(max_wait):
-        shot = sct.grab(rect)
-        img = Image.frombytes("RGB", (shot.width, shot.height), shot.rgb)
-        stat = ImageStat.Stat(img)
-        avg = stat.mean
-
-        # если окно НЕ полностью белое и графики уже есть — ок
-        if not (avg[0] > 250 and avg[1] > 250 and avg[2] > 250) and is_chart_drawn(img):
-            print(f"[AIDA64] окно готово (attempt={attempt + 1}, avg={avg})")
-            return img
-
-        print(f"[AIDA64] попытка {attempt + 1}: окно ещё не отрисовано (avg={avg})")
-        time.sleep(15.0)
-
-    print("[AIDA64] предупреждение: окно возможно не отрисовано полностью, берём последнее изображение")
-    return img
-
-
-# -------------------------------------------------------------------------
+from PIL import Image
 
 TARGET_KEYWORDS = [
-    "aida64", "System Stability Test",
-    "furmark", "fio", "fio.exe", "console",
-    "cmd.exe", "pause", "Read-Write-test"
+    "aida64",
+    "system stability test",
+    "furmark",
+    "fio",
+    "fio.exe",
+    "cmd.exe - pause",
+    "read-write-test",
 ]
 
 MIN_WIDTH = 300
 MIN_HEIGHT = 200
 
 
-def get_report_directory() -> str:
+def get_report_directory():
     desktop = os.path.join(os.environ["USERPROFILE"], "Desktop")
     computer_name = os.environ.get("COMPUTERNAME", "Unknown")
     base_dir = os.path.join(desktop, computer_name)
@@ -63,75 +29,72 @@ def get_report_directory() -> str:
     return screens_dir
 
 
-def safe_capture(hwnd, folder: str, autoscreen: bool = False):
+def safe_capture(hwnd, folder, autoscreen: bool = False):
     if not win32gui.IsWindowVisible(hwnd):
         return
 
     title = win32gui.GetWindowText(hwnd).strip()
-    class_name = win32gui.GetClassName(hwnd).lower()
+    if not title:
+        return
 
-    # cmd-консоли
+    class_name = win32gui.GetClassName(hwnd).lower()
     is_cmd = class_name == "consolewindowclass"
 
-    # Скринить все cmd.exe (консоли) + нужные заголовки
+    title_lower = title.lower()
+    is_aida = "system stability test" in title_lower or "aida64" in title_lower
+    is_furmark = "furmark" in title_lower
+
     is_target = (
         is_cmd
-        or "FurMark GPU 0" in title
-        or "FurMark GPU 1" in title
-        or "FIO" in title
-        or "System Stability Test" in title
-        or any(keyword.lower() in title.lower() for keyword in TARGET_KEYWORDS)
+        or is_aida
+        or is_furmark
+        or any(k in title_lower for k in TARGET_KEYWORDS)
     )
     if not is_target:
         return
 
     try:
-        # AIDA/FurMark лучше разворачивать на максимум
-        win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
+        # Развернуть/показать окно
+        win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
         shell = win32com.client.Dispatch("WScript.Shell")
-        shell.SendKeys('%')  # чтобы SetForegroundWindow сработал
+        shell.SendKeys('%')  # магия, чтобы SetForegroundWindow сработал
+        time.sleep(1.0)
 
-        # даём окну время перерисоваться
-        time.sleep(2.5 if is_cmd else 6.5)
-
-        for _ in range(3):
+        for _ in range(5):
             try:
                 win32gui.SetForegroundWindow(hwnd)
                 break
             except Exception:
-                time.sleep(2.0)
+                time.sleep(0.5)
 
         rect = win32gui.GetWindowRect(hwnd)
         x, y, x1, y1 = rect
         width = x1 - x
         height = y1 - y
+
         if width < MIN_WIDTH or height < MIN_HEIGHT:
-            print(f"Пропуск: окно '{title}' слишком маленькое ({width}x{height})")
+            print(f"Пропуск '{title}': слишком маленькое окно ({width}x{height})")
             return
 
         with mss() as sct:
+            # короткая задержка, чтобы окно перерисовалось
+            time.sleep(2.0)
             monitor = {"left": x, "top": y, "width": width, "height": height}
+            shot = sct.grab(monitor)
+            img = Image.frombytes("RGB", (shot.width, shot.height), shot.rgb)
 
-            # Для AIDA ждём нормальной отрисовки графиков
-            if "System Stability Test" in title or "AIDA64" in title:
-                print(f"[AIDA64] окно {width}x{height}, ждём отрисовки графиков")
-                image = wait_for_aida_ready(sct, monitor)
-            else:
-                time.sleep(1.5 if is_cmd else 2.5)
-                screenshot = sct.grab(monitor)
-                image = Image.frombytes("RGB", (screenshot.width, screenshot.height), screenshot.rgb)
-
-        # имя файла: cmd_XXXX_*.png либо по заголовку
         if is_cmd:
             safe_title = f"cmd_{hwnd}"
         else:
-            safe_title = "".join(c if c.isalnum() or c in " _-" else "_" for c in title)
+            safe_title = "".join(
+                c if c.isalnum() or c in " _-" else "_" for c in title
+            )
 
         suffix = "auto" if autoscreen else "end"
         filename = f"{safe_title}_{suffix}.png"
         path = os.path.join(folder, filename)
-        image.save(path)
-        print(f"Скриншот окна '{title}' сохранён как: {filename}")
+        img.save(path)
+        print(f"Скрин '{title}' сохранён как {filename}")
 
     except Exception as e:
         print(f"Ошибка при работе с окном '{title}': {e}")
@@ -148,22 +111,19 @@ def capture_test_windows(autoscreen: bool = False):
 
     win32gui.EnumWindows(enum_cb, None)
 
-    # Сначала AIDA, потом консоли, потом всё остальное
     def window_priority(h):
-        title = win32gui.GetWindowText(h).lower()
-        class_name = win32gui.GetClassName(h).lower()
-        if "system stability test" in title or "aida64" in title:
+        t = win32gui.GetWindowText(h).lower()
+        cls = win32gui.GetClassName(h).lower()
+        if "system stability test" in t or "aida64" in t:
             return 0
-        if class_name == "consolewindowclass":
+        if cls == "consolewindowclass":
             return 1
         return 2
 
-    hwnds_sorted = sorted(hwnds, key=window_priority)
-
-    for hwnd in hwnds_sorted:
+    for hwnd in sorted(hwnds, key=window_priority):
         safe_capture(hwnd, folder, autoscreen=autoscreen)
 
-    print("Скриншоты окон тестирования успешно сделаны.")
+    print("Скриншоты окон тестирования сделаны.")
 
 
 if __name__ == "__main__":
