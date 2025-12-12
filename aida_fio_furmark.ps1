@@ -193,10 +193,29 @@ if ($args.Count -ge 2) {
 
     $totalSeconds = [math]::Round($hours * 3600)
 
-    Write-Host "Ожидание завершения тестов ($totalSeconds с)..."
-    Start-Sleep -Seconds $totalSeconds
+    # === ИЗМЕНЕНИЕ ЗДЕСЬ: Ждем не полное время, а как в старой версии ===
+    if ($selectedTests -contains "AIDA") {
+        # Для AIDA: делаем скрин за 15 секунд до конца
+        $aida_delay = [math]::Max($totalSeconds - 15, 1)
+        Write-Host "Ожидание для скрина AIDA64 (за 15 сек до конца)..."
+        Start-Sleep -Seconds $aida_delay
 
-    # Финальный скрин (как и раньше)
+        Write-Host "Скрин AIDA64 перед завершением..."
+        Start-ScreenScript
+
+        # Ждем окончание всех тестов (оставшиеся 15+ секунд)
+        $remaining = $totalSeconds - $aida_delay + 5  # +5 секунд запаса
+        if ($remaining -gt 0) {
+            Write-Host "Ждем окончание всех тестов ($remaining с)..."
+            Start-Sleep -Seconds $remaining
+        }
+    } else {
+        # Если AIDA нет, ждем полное время
+        Write-Host "Ожидание завершения тестов ($totalSeconds с)..."
+        Start-Sleep -Seconds $totalSeconds
+    }
+
+    # Финальный скрин (для остальных программ)
     Write-Host "Финальный скрин после завершения тестов"
     Start-ScreenScript
 
