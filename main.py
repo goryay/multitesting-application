@@ -660,24 +660,24 @@ def run_gui():
                 self.stop_flag = threading.Event()
                 self.stop_btn.config(state="normal")
 
-                def autoscreen_worker():
-                    hour = 3600
-                    elapsed = 0
-                    while not self.stop_flag.is_set() and elapsed < duration_seconds:
-                        to_sleep = min(hour, duration_seconds - elapsed)
-                        if to_sleep <= 0:
-                            break
-                        if self.stop_flag.wait(to_sleep):
-                            break
-                        try:
-                            cmd = build_screen_cmd("--autoscreen")
-                            subprocess.Popen(cmd, shell=False, cwd=workdir)
-                        except Exception as e:
-                            log_resume(f"[gui] autoscreen fail: {e}")
-                        elapsed += to_sleep
-
-                self.autoscreen_thread = threading.Thread(target=autoscreen_worker, daemon=True)
-                self.autoscreen_thread.start()
+                # def autoscreen_worker():
+                #     hour = 3600
+                #     elapsed = 0
+                #     while not self.stop_flag.is_set() and elapsed < duration_seconds:
+                #         to_sleep = min(hour, duration_seconds - elapsed)
+                #         if to_sleep <= 0:
+                #             break
+                #         if self.stop_flag.wait(to_sleep):
+                #             break
+                #         try:
+                #             cmd = build_screen_cmd("--autoscreen")
+                #             subprocess.Popen(cmd, shell=False, cwd=workdir)
+                #         except Exception as e:
+                #             log_resume(f"[gui] autoscreen fail: {e}")
+                #         elapsed += to_sleep
+                #
+                # self.autoscreen_thread = threading.Thread(target=autoscreen_worker, daemon=True)
+                # self.autoscreen_thread.start()
 
                 def wait_and_final_screens():
                     self.test_proc.wait()

@@ -14,6 +14,9 @@ TARGET_KEYWORDS = [
     "fio.exe",
     "cmd.exe - pause",
     "read-write-test",
+    "system stability",
+    "stability test",
+    "system stability test - aida64",
 ]
 
 MIN_WIDTH = 300
@@ -41,16 +44,33 @@ def safe_capture(hwnd, folder, autoscreen: bool = False):
     is_cmd = class_name == "consolewindowclass"
 
     title_lower = title.lower()
-    is_aida = "system stability test" in title_lower or "aida64" in title_lower
+
+    # === КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Расширяем фильтр ===
+    is_aida = any(keyword in title_lower for keyword in ["aida64", "system stability test", "stability test"])
     is_furmark = "furmark" in title_lower
 
     is_target = (
-        is_cmd
-        or is_aida
-        or is_furmark
-        or any(k in title_lower for k in TARGET_KEYWORDS)
+            is_cmd
+            or is_aida
+            or is_furmark
+            or any(k in title_lower for k in TARGET_KEYWORDS)
+            or "test" in title_lower  # ← ДОБАВЛЕНО
+            or "stability" in title_lower  # ← ДОБАВЛЕНО
     )
+
+    if autoscreen and is_aida:
+        # AIDA скринится ТОЛЬКО из PowerShell
+        return
+
+    # === ДОПОЛНИТЕЛЬНО: Если это окно cmd с чем-то интересным ===
+    if not is_target and is_cmd:
+        # Проверяем, не скрыта ли AIDA64 в окне cmd
+        if any(word in title_lower for word in ["aida", "system", "stability", "test"]):
+            is_target = True
+
     if not is_target:
+        # ДЕБАГ: выводим, какие окна пропускаем
+        print(f"Пропуск окна: '{title}' (не соответствует критериям)")
         return
 
     try:
@@ -83,12 +103,19 @@ def safe_capture(hwnd, folder, autoscreen: bool = False):
             shot = sct.grab(monitor)
             img = Image.frombytes("RGB", (shot.width, shot.height), shot.rgb)
 
+        # === ИСПРАВЛЕНИЕ: Улучшаем имя файла ===
         if is_cmd:
+            # Для cmd окон используем более понятное имя
             safe_title = f"cmd_{hwnd}"
         else:
+            # Заменяем проблемные символы
             safe_title = "".join(
-                c if c.isalnum() or c in " _-" else "_" for c in title
+                c if c.isalnum() or c in " _-()" else "_" for c in title
             )
+
+        # Добавляем префикс, если это AIDA64
+        if is_aida:
+            safe_title = f"aida64_{safe_title}"
 
         suffix = "auto" if autoscreen else "end"
         filename = f"{safe_title}_{suffix}.png"
@@ -110,6 +137,17 @@ def capture_test_windows(autoscreen: bool = False):
             hwnds.append(hwnd)
 
     win32gui.EnumWindows(enum_cb, None)
+
+    # === ДЕБАГ: Выводим все найденные окна ===
+    print("=== НАЙДЕНЫ СЛЕДУЮЩИЕ ОКНА ===")
+    for h in hwnds:
+        try:
+            title = win32gui.GetWindowText(h)
+            if title:
+                print(f"  '{title}'")
+        except:
+            pass
+    print("==============================")
 
     def window_priority(h):
         t = win32gui.GetWindowText(h).lower()
