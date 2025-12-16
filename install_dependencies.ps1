@@ -1,11 +1,28 @@
 # install_dependencies.ps1
 $ErrorActionPreference = "Stop"
 
-# Корень с инсталляторами (лежит рядом с распакованным exe / main.py внутри _MEI...)
-$SoftRoot = Join-Path $PSScriptRoot "SoftForTest"
+param(
+    [string]$SoftRoot = ""
+)
+
+# 1) Если SoftRoot не передали — пробуем рядом со скриптом
+if ([string]::IsNullOrWhiteSpace($SoftRoot)) {
+    $SoftRoot = Join-Path $PSScriptRoot "SoftForTest"
+}
+
+# 2) Если мы запущены из _MEI... (PyInstaller temp), то SoftForTest там обычно НЕТ.
+#    Тогда пробуем взять SoftForTest рядом с main.exe (текущая рабочая папка).
+if (-not (Test-Path $SoftRoot)) {
+    $cwdCandidate = Join-Path (Get-Location) "SoftForTest"
+    if (Test-Path $cwdCandidate) {
+        $SoftRoot = $cwdCandidate
+    }
+}
 
 if (-not (Test-Path $SoftRoot)) {
-    Write-Host "Папка SoftForTest не найдена: $SoftRoot"
+    Write-Host "Папка SoftForTest не найдена. Проверены пути:"
+    Write-Host "  - $SoftRoot"
+    Write-Host "  - $(Join-Path (Get-Location) 'SoftForTest')"
     exit 1
 }
 
@@ -36,7 +53,6 @@ function Install-PowerShell7 {
     }
 
     Write-Host "Устанавливается PowerShell 7..."
-
     $installerFile = Get-InstallerFile -Description "PowerShell 7" -Patterns @(
         "PowerShell-7*.msi", "*PowerShell*7*.msi"
     )
@@ -47,7 +63,6 @@ function Install-PowerShell7 {
 
     if (Test-Path $pwshPath) {
         Write-Host "PowerShell 7 установлен: $pwshPath"
-        # опционально подчистим MSI
         Remove-Item $installer -Force -ErrorAction SilentlyContinue
     } else {
         throw "После установки PowerShell 7 не найден по пути $pwshPath"
@@ -62,8 +77,6 @@ function Install-FIO {
     }
 
     Write-Host "Устанавливается FIO..."
-
-    # Сознательно широкие маски — главное, чтобы файл назывался fio*.msi
     $installerFile = Get-InstallerFile -Description "FIO" -Patterns @(
         "fio*.msi", "*fio*.msi"
     )
@@ -89,7 +102,6 @@ function Install-Smartmontools {
 
     Write-Host "Устанавливается smartmontools..."
 
-    # Пытаемся найти win64, если нет — берём win32
     $installerFile = $null
     try {
         $installerFile = Get-InstallerFile -Description "smartmontools win64" -Patterns @(
@@ -105,10 +117,7 @@ function Install-Smartmontools {
     $installer = $installerFile.FullName
     Write-Host "Найден инсталлятор smartmontools: $installer"
 
-    # NSIS-инсталлятор, тихий ключ /S, путь задаём явно
-    Start-Process $installer `
-        -ArgumentList "/S", "/D=C:\Program Files\smartmontools" `
-        -Wait -NoNewWindow
+    Start-Process $installer -ArgumentList "/S", "/D=C:\Program Files\smartmontools" -Wait -NoNewWindow
 
     if (Test-Path $smartCtl) {
         Write-Host "smartmontools установлен: $smartCtl"
