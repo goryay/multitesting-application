@@ -192,20 +192,25 @@ def safe_capture(hwnd, folder, autoscreen: bool = False, aida_only: bool = False
         elif "furmark" in title_lower:
             safe_title = "furmark_results"
         elif class_name == "consolewindowclass" or "cmd.exe" in title_lower:
-            # Для CMD окон проверяем содержимое
             content = get_console_content(hwnd).lower()
 
-            # Пытаемся определить, что за тест в консоли
-            if "run status group" in content or "clat percentiles" in content or "iops=" in content:
+            is_fio_like = ("run status group" in content or "clat percentiles" in content or "iops=" in content)
+            fio_done = (
+                    ("тест fio завершен" in content) or
+                    ("для закрытия окна нажмите" in content) or
+                    ("press any key" in content)
+            )
+
+            if is_fio_like:
+                # ВАЖНО: в финальном режиме сохраняем ТОЛЬКО завершённые окна
+                if not autoscreen and not aida_only and not fio_done:
+                    print("[DEBUG] FIO окно ещё не завершено -> пропуск (ждём следующий проход)")
+                    return
                 safe_title = "fio_results"
             elif "furmark" in content or "fps:" in content or "gpu:" in content:
                 safe_title = "furmark_results"
             else:
                 safe_title = "cmd_output"
-        else:
-            safe_title = "".join(
-                c if c.isalnum() or c in " _-()" else "_" for c in title
-            )
 
         # Добавляем суффикс и timestamp
         suffix = "auto" if autoscreen else "end"
