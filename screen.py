@@ -78,7 +78,7 @@ def safe_capture(hwnd, folder, autoscreen: bool = False, aida_only: bool = False
         proc_name = get_window_process_name(hwnd)
 
         if proc_name:
-            is_aida_proc = ("aida64" in proc_name) or (proc_name == "aida64port.exe")
+            is_aida_proc = proc_name in ("aida64port.exe", "aida64.exe")
             if is_aida_proc:
                 is_aida = ("system stability test" in title_lower) or ("aida64" in title_lower)
         else:
@@ -192,25 +192,20 @@ def safe_capture(hwnd, folder, autoscreen: bool = False, aida_only: bool = False
         elif "furmark" in title_lower:
             safe_title = "furmark_results"
         elif class_name == "consolewindowclass" or "cmd.exe" in title_lower:
+            # Для CMD окон проверяем содержимое
             content = get_console_content(hwnd).lower()
 
-            is_fio_like = ("run status group" in content or "clat percentiles" in content or "iops=" in content)
-            fio_done = (
-                    ("тест fio завершен" in content) or
-                    ("для закрытия окна нажмите" in content) or
-                    ("press any key" in content)
-            )
-
-            if is_fio_like:
-                # ВАЖНО: в финальном режиме сохраняем ТОЛЬКО завершённые окна
-                if not autoscreen and not aida_only and not fio_done:
-                    print("[DEBUG] FIO окно ещё не завершено -> пропуск (ждём следующий проход)")
-                    return
+            # Пытаемся определить, что за тест в консоли
+            if "run status group" in content or "clat percentiles" in content or "iops=" in content:
                 safe_title = "fio_results"
             elif "furmark" in content or "fps:" in content or "gpu:" in content:
                 safe_title = "furmark_results"
             else:
                 safe_title = "cmd_output"
+        else:
+            safe_title = "".join(
+                c if c.isalnum() or c in " _-()" else "_" for c in title
+            )
 
         # Добавляем суффикс и timestamp
         suffix = "auto" if autoscreen else "end"
@@ -240,6 +235,37 @@ def capture_test_windows(autoscreen: bool = False, aida_only: bool = False):
     if not autoscreen and not aida_only:
         print("[INFO] Ожидание финальных окон тестов (7 секунд)...")
         time.sleep(7)
+
+    # END-режим: ждём именно финальные окна fio (cmd.exe - pause), иначе получится скрин "на 40 сек до конца".
+    if (not autoscreen) and (not aida_only):
+        try:
+            deadline = time.time() + 90  # максимум 90 секунд ожидания финала fio
+            last_pause_count = -1
+            stable_ticks = 0
+            while time.time() < deadline:
+                pause_cnt = 0
+                tmp = []
+
+                def _cb(hwnd, _):
+                    if win32gui.IsWindowVisible(hwnd):
+                        tmp.append(hwnd)
+
+                win32gui.EnumWindows(_cb, None)
+                for h in tmp:
+                    title = win32gui.GetWindowText(h) or ""
+                    if "cmd.exe" in title.lower() and " - pause" in title.lower():
+                        pause_cnt += 1
+                # если количество pause-окон стабилизировалось несколько циклов — выходим раньше
+                if pause_cnt == last_pause_count and pause_cnt > 0:
+                    stable_ticks += 1
+                else:
+                    stable_ticks = 0
+                last_pause_count = pause_cnt
+                if stable_ticks >= 3:  # ~6 секунд стабильности
+                    break
+                time.sleep(2)
+        except Exception:
+            pass
 
     folder = get_report_directory()
 

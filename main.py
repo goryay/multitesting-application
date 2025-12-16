@@ -35,6 +35,53 @@ def log_resume(msg: str):
         pass
 
 
+# ================= PowerShell picker =================
+_PS_EXE_CACHE = None
+
+
+def get_powershell_exe() -> str:
+    """Возвращает рабочий PowerShell (pwsh, если он реально запускается; иначе powershell.exe).
+
+    На части "чистых" систем pwsh.exe может падать (например, из‑за отсутствующих VC++ runtime),
+    и тогда любые отчёты/скрипты отваливаются с rc=3221227010 (0xC0000602).
+    """
+    global _PS_EXE_CACHE
+    if _PS_EXE_CACHE:
+        return _PS_EXE_CACHE
+
+    candidates = [
+        r"C:\Program Files\PowerShell\7\pwsh.exe",
+        "pwsh.exe",
+        "powershell.exe",  # Windows PowerShell 5.1
+    ]
+
+    for exe in candidates:
+        try:
+            p = subprocess.run(
+                [exe, "-NoProfile", "-NonInteractive", "-Command", "$PSVersionTable.PSVersion.Major"],
+                capture_output=True, text=True, timeout=8, shell=False
+            )
+            if p.returncode == 0:
+                _PS_EXE_CACHE = exe
+                return exe
+            # если pwsh падает, пробуем следующий кандидат
+            log_resume(f"[ps] candidate '{exe}' rc={p.returncode} stderr_tail={(p.stderr or '')[-200:]}")
+        except FileNotFoundError:
+            continue
+        except Exception as e:
+            log_resume(f"[ps] candidate '{exe}' exception: {e}")
+
+    _PS_EXE_CACHE = "powershell.exe"
+    return _PS_EXE_CACHE
+
+
+def with_ps_env(base_env: dict | None = None) -> dict:
+    env = dict(base_env or os.environ)
+    # добавим стандартный путь pwsh, если он есть — это не ломает 5.1
+    env["PATH"] = r"C:\Program Files\PowerShell\7;" + env.get("PATH", "")
+    return env
+
+
 def calc_autoscreen_delay(duration_seconds: int) -> int:
     """
     Когда делать автоскрин:
@@ -49,16 +96,16 @@ def calc_autoscreen_delay(duration_seconds: int) -> int:
     return max(duration_seconds - 600, 300)
 
 
-def build_screen_cmd(*flags: str) -> list[str]:
+def build_screen_cmd(flag: str) -> list[str]:
     """
     Команда для запуска скринера (--screen / --autoscreen):
     - в exe:   main.exe --flag
     - в исходниках: python main.py --flag
     """
     if is_frozen():
-        return [sys.executable, *flags]
+        return [sys.executable, flag]
     else:
-        return [sys.executable, os.path.abspath(__file__), *flags]
+        return [sys.executable, os.path.abspath(__file__), flag]
 
 
 # ============= быстрые флаги скринера (до локера!) =============
@@ -75,11 +122,12 @@ if "--autoscreen" in sys.argv or "--screen" in sys.argv:
             spec.loader.exec_module(mod)  # type: ignore
             screen_mod = mod
 
-        screen_mod.capture_test_windows(
-            autoscreen="--autoscreen" in sys.argv,
-            aida_only="--aida-only" in sys.argv
-        )
+        screen_mod.capture_test_windows(autoscreen="--autoscreen" in sys.argv)
     except Exception as e:
+        try:
+            with open(LOG_FILE, "a", encoding="utf-8") as f:
+                f.write(f"{datetime.now():%Y-%m-%d %H:%M:%S} [screen] fail: {e}\n")
+        except Exception:
             pass
     sys.exit(0)
 
@@ -314,7 +362,7 @@ def headless_resume(state: dict):
     log_resume(f"[resume] duration_seconds: {duration_seconds}")
     log_resume(f"[resume] args: {args}")
 
-    pwsh_path = r"C:\Program Files\PowerShell\7\pwsh.exe"
+    pwsh_path = get_powershell_exe()
     script_full_path = resource_path("aida_fio_furmark.ps1")
 
     desired_workdir = state.get("workdir") or (
@@ -594,7 +642,7 @@ def run_gui():
 
             save_state({"args": args, "duration_seconds": duration_seconds})
 
-            pwsh_path = r"C:\Program Files\PowerShell\7\pwsh.exe"
+            pwsh_path = get_powershell_exe()
             script_full_path = resource_path("aida_fio_furmark.ps1")
             workdir = os.path.dirname(sys.executable) if is_frozen() else os.path.dirname(os.path.abspath(__file__))
             logfile_path = os.path.join(workdir, "test_launcher_log.txt")
@@ -636,48 +684,6 @@ def run_gui():
 
                 threading.Thread(target=autoscreen_once, daemon=True).start()
 
-                def aida_guard_worker():
-                    """
-                    Скрин AIDA под конец её работы, с учётом того, что AIDA заканчивается
-                    примерно на 7 минут раньше FIO/общего сценария.
-                    """
-                    try:
-                        aida_offset = 9 * 60  # AIDA раньше на 7 минут
-
-                        # "когда обычно делаем автоскрин" (30с/2мин/5мин до конца)
-                        lead = 600 if duration_seconds > 1800 else (240 if duration_seconds > 600 else 120)
-
-                        # стартовать за lead до "конца AIDA"
-                        start_wait = max(duration_seconds - aida_offset - lead, 10)
-
-                        log_resume(f"[gui][aida_guard] start_wait={start_wait}s (offset={aida_offset}s, lead={lead}s)")
-
-                        # ждём нужный момент
-                        if self.stop_flag.wait(start_wait):
-                            log_resume("[gui][aida_guard] cancelled by stop_flag before start")
-                            return
-
-                        # окно попыток, чтобы не промахнуться (4 минуты)
-                        attempts_window = 240
-                        interval = 10
-                        t_end = time.time() + attempts_window
-                        attempt = 0
-
-                        while time.time() < t_end and not self.stop_flag.is_set():
-                            attempt += 1
-                            cmd = build_screen_cmd("--autoscreen", "--aida-only")
-                            log_resume(f"[gui][aida_guard] attempt #{attempt} cmd={cmd}")
-                            subprocess.run(cmd, shell=False, cwd=workdir, check=False)
-                            time.sleep(interval)
-
-                        log_resume("[gui][aida_guard] finished attempts window")
-
-                    except Exception as e:
-                        log_resume(f"[gui][aida_guard] fail: {e}")
-
-                threading.Thread(target=aida_guard_worker, daemon=True).start()
-                log_resume("[gui] aida_guard thread spawned")
-
                 def wait_and_final_screens():
                     self.test_proc.wait()
                     self.stop_flag.set()
@@ -688,7 +694,7 @@ def run_gui():
                     time.sleep(10)  # Увеличиваем задержку
 
                     # Делаем несколько попыток скриншотов
-                    for attempt in range(3):
+                    for attempt in range(1):
                         print(f"[INFO] Попытка скрина #{attempt + 1}")
                         try:
                             cmd = build_screen_cmd("--screen")
@@ -761,7 +767,7 @@ def run_gui():
         def run_uninstall_script(self):
             try:
                 script_path = resource_path("AllUnin.ps1")
-                pwsh_path = r"C:\Program Files\PowerShell\7\pwsh.exe"
+                pwsh_path = get_powershell_exe()
                 env = os.environ.copy()
                 env["PATH"] = r"C:\Program Files\PowerShell\7;" + env.get("PATH", "")
                 subprocess.run([pwsh_path, "-ExecutionPolicy", "Bypass", "-File", script_path],
@@ -800,7 +806,7 @@ def run_gui():
                 aida_path = resource_path(r"SoftForTest\AIDA64\AIDA64Port.exe")  # Прямой путь к AIDA64
                 script_path = resource_path("aida_fio_furmark.ps1")
                 smart_script = resource_path("smart.ps1")
-                pwsh_path = r"C:\Program Files\PowerShell\7\pwsh.exe"
+                pwsh_path = get_powershell_exe()
                 env = os.environ.copy()
                 env["PATH"] = r"C:\Program Files\PowerShell\7;" + env.get("PATH", "")
 
