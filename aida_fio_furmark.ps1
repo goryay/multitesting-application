@@ -1,170 +1,234 @@
 Push-Location -LiteralPath $PSScriptRoot
 $script:__popOnExit = $true
+$ErrorActionPreference = "Stop"
 
-# ===================== ОБЩИЙ СКРИН (Python) =====================
+# ===================== ОБЩИЙ СКРИН (Python main.exe) =====================
 function Start-ScreenScript {
+    param(
+        [string]$arg = "--screen",
+        [switch]$AidaOnly = $false
+    )
+
     $mainExe = Join-Path $PSScriptRoot "main.exe"
-    if (Test-Path $mainExe) {
-        Start-Process -FilePath $mainExe -ArgumentList "--screen"
+    $pythonScript = Join-Path $PSScriptRoot "screen.py"
+
+    if ($AidaOnly) {
+        # Специальный скриншот только AIDA64
+        if (Test-Path $pythonScript) {
+            # Запускаем Python скрипт напрямую для скриншота AIDA64
+            $argList = @()
+            if ($arg -eq "--autoscreen") {
+                $argList = @("--autoscreen", "--aida-only")
+            } else {
+                $argList = @("--screen", "--aida-only")
+            }
+
+            # Проверяем наличие окна AIDA64
+            $aidaProcess = Get-Process -Name "AIDA64Port" -ErrorAction SilentlyContinue |
+                           Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle -like "*System Stability Test*" }
+
+            if ($aidaProcess) {
+                Write-Host "Найдено окно AIDA64, делаем скриншот..."
+                $python = "python"
+                if (Test-Path "C:\Python312\python.exe") { $python = "C:\Python312\python.exe" }
+                elseif (Test-Path "C:\Python311\python.exe") { $python = "C:\Python311\python.exe" }
+                elseif (Test-Path "C:\Python310\python.exe") { $python = "C:\Python310\python.exe" }
+
+                try {
+                    & $python $pythonScript @argList
+                } catch {
+                    Write-Host "Ошибка запуска Python: $_"
+                }
+            } else {
+                Write-Host "Окно AIDA64 не найдено для скриншота"
+            }
+        } else {
+            Write-Host "screen.py не найден: $pythonScript"
+        }
     } else {
-        Write-Host "main.exe не найден: $mainExe"
+        # Обычный скриншот всех окон
+        if (Test-Path $mainExe) {
+            Start-Process -FilePath $mainExe -ArgumentList $arg | Out-Null
+        } else {
+            Write-Host "main.exe не найден: $mainExe"
+        }
     }
 }
 
-# ===================== СКРИН AIDA64 (ОКНО) =====================
-function Capture-Aida64Screenshot {
-    param([bool]$isAutoScreen = $false)
+# ===================== ПРОЦЕССНЫЕ ХЕЛПЕРЫ =====================
+function Close-ProcessByName {
+    param(
+        [Parameter(Mandatory=$true)][string]$name,
+        [int]$waitSeconds = 10
+    )
+
+    $p = Get-Process -Name $name -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $p) { return }
 
     try {
-        Add-Type -AssemblyName System.Drawing
+        if ($p.MainWindowHandle -ne 0) { $null = $p.CloseMainWindow() }
+    } catch {}
 
-        Add-Type @"
-using System;
-using System.Runtime.InteropServices;
+    try { $p | Wait-Process -Timeout $waitSeconds -ErrorAction SilentlyContinue } catch {}
 
-public static class Win32Cap {
-  [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hWnd);
-  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
-  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
-  [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr hwnd, IntPtr hdcBlt, uint nFlags);
-
-  [StructLayout(LayoutKind.Sequential)]
-  public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
-}
-"@
-
-        $desktop = [Environment]::GetFolderPath('Desktop')
-        $pc = $env:COMPUTERNAME
-        $screensDir = Join-Path $desktop "$pc\Screens"
-        if (-not (Test-Path $screensDir)) {
-            New-Item -ItemType Directory -Force -Path $screensDir | Out-Null
-        }
-
-        $p = Get-Process -Name "AIDA64Port" -ErrorAction SilentlyContinue | Select-Object -First 1
-        if (-not $p -or $p.MainWindowHandle -eq 0) {
-            Write-Host "AIDA: окно не найдено"
-            return $false
-        }
-
-        $hwnd = [IntPtr]$p.MainWindowHandle
-        if (-not [Win32Cap]::IsWindow($hwnd) -or -not [Win32Cap]::IsWindowVisible($hwnd)) {
-            Write-Host "AIDA: окно не активно/невидимо"
-            return $false
-        }
-
-        $rect = New-Object Win32Cap+RECT
-        if (-not [Win32Cap]::GetWindowRect($hwnd, [ref]$rect)) {
-            Write-Host "AIDA: не удалось получить размеры окна"
-            return $false
-        }
-
-        $w = $rect.Right - $rect.Left
-        $h = $rect.Bottom - $rect.Top
-        if ($w -lt 50 -or $h -lt 50) {
-            Write-Host "AIDA: странные размеры окна ($w x $h)"
-            return $false
-        }
-
-        $bmp = New-Object System.Drawing.Bitmap $w, $h, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
-        $gfx = [System.Drawing.Graphics]::FromImage($bmp)
-        $hdc = $gfx.GetHdc()
-
-        try {
-            [Win32Cap]::PrintWindow($hwnd, $hdc, 2) | Out-Null
-        } finally {
-            $gfx.ReleaseHdc($hdc)
-            $gfx.Dispose()
-        }
-
-        $ts = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
-        $tag = if ($isAutoScreen) { "auto" } else { "end" }
-        $file = Join-Path $screensDir "aida_${tag}_${ts}.png"
-
-        $bmp.Save($file, [System.Drawing.Imaging.ImageFormat]::Png)
-        $bmp.Dispose()
-
-        Write-Host "AIDA: скрин сохранён -> $file"
-        return $true
-    }
-    catch {
-        Write-Host "AIDA: ошибка скрина: $_"
-        return $false
+    $p2 = Get-Process -Name $name -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($p2) {
+        try { Stop-Process -Id $p2.Id -Force -ErrorAction SilentlyContinue } catch {}
+        Start-Sleep -Seconds 2
     }
 }
 
-# ===================== ЗАПУСК ТЕСТОВ =====================
+# ===================== ПУТИ =====================
 $aida64Path  = ".\SoftForTest\AIDA64\AIDA64Port.exe"
 $furMarkPath = ".\SoftForTest\FurMark\furmark.exe"
 $fioPath     = "C:\Program Files\fio\fio.exe"
 
-$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
+$scriptDir       = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $aida64FullPath  = Join-Path $scriptDir $aida64Path
 $furMarkFullPath = Join-Path $scriptDir $furMarkPath
 
+# ===================== ЗАПУСК AIDA64 (в cmd, чтобы окно осталось) =====================
 function Start-AidaTest {
     param([double]$hours, [bool]$includeGPU)
+
+    if (-not (Test-Path $aida64FullPath)) { throw "AIDA64 не найдена: $aida64FullPath" }
+
     $minutes = [math]::Round($hours * 60)
     $gpu = if ($includeGPU) { ",GPU" } else { "" }
     $params = @("/SST CPU,FPU,Cache,RAM,Disk$gpu", "/SSTDUR $minutes")
-    $cmd = "`"$aida64FullPath`" $( $params -join ' ' )"
-    Start-Process "cmd.exe" -ArgumentList "/k", $cmd | Out-Null
+
+    # /k + pause => cmd не закроется, а AIDA отработает в своём окне
+    $cmdLine = "`"$aida64FullPath`" $($params -join ' ')"
+    $process = Start-Process -FilePath "cmd.exe" -ArgumentList @("/k", "$cmdLine") -PassThru
+    return $process
 }
 
+# ===================== ЗАПУСК FURMARK (с улучшениями) =====================
 function Start-FurMarkTest {
     param([double]$hours, [int]$gpuCount)
+
+    if (-not (Test-Path $furMarkFullPath)) { throw "FurMark не найден: $furMarkFullPath" }
 
     $seconds    = [math]::Round($hours * 3600)
     $resolution = "1920x1080"
     $demo       = "furmark-vk"
 
-    if ($gpuCount -eq 1) {
+    $w = $resolution.Split('x')[0]
+    $h = $resolution.Split('x')[1]
+
+    if ($gpuCount -le 1) {
         $params = @(
             "--demo $demo",
             "--fullscreen",
-            "--width $( $resolution.Split('x')[0] )",
-            "--height $( $resolution.Split('x')[1] )",
+            "--width $w",
+            "--height $h",
             "--max-time $seconds",
             "--no-score-box",
             "--disable-demo-options"
         )
-        $inner = "`"$furMarkFullPath`" $( $params -join ' ' ) & pause"
-        Start-Process -FilePath "cmd.exe" -ArgumentList "/k", $inner | Out-Null
-    } else {
+
+        # УЛУЧШЕННАЯ КОМАНДА: сначала FurMark, потом пауза
+        $cmdArgs = @(
+            "/k",
+            "echo Запуск FurMark...",
+            "&",
+            "`"$furMarkFullPath`" $($params -join ' ')",
+            "&",
+            "echo.",
+            "&",
+            "echo Тест FurMark завершен!",
+            "&",
+            "echo Для закрытия окна нажмите любую клавишу...",
+            "&",
+            "pause > nul"
+        )
+
+        Write-Host "Запуск FurMark..."
+        Start-Process -FilePath "cmd.exe" -ArgumentList $cmdArgs -WindowStyle Normal
+    }
+    else {
         $params1 = @(
-            "--demo $demo", "--fullscreen",
-            "--width $( $resolution.Split('x')[0] )",
-            "--height $( $resolution.Split('x')[1] )",
-            "--max-time $seconds", "--no-score-box", "--disable-demo-options", "--gpu-index 0"
+            "--demo $demo",
+            "--fullscreen",
+            "--width $w",
+            "--height $h",
+            "--max-time $seconds",
+            "--no-score-box",
+            "--disable-demo-options",
+            "--gpu-index 0"
         )
         $params2 = @(
-            "--demo $demo", "--fullscreen",
-            "--width $( $resolution.Split('x')[0] )",
-            "--height $( $resolution.Split('x')[1] )",
-            "--max-time $seconds", "--no-score-box", "--disable-demo-options", "--gpu-index 1"
+            "--demo $demo",
+            "--fullscreen",
+            "--width $w",
+            "--height $h",
+            "--max-time $seconds",
+            "--no-score-box",
+            "--disable-demo-options",
+            "--gpu-index 1"
         )
-        $inner1 = "`"$furMarkFullPath`" $( $params1 -join ' ' ) & pause"
-        $inner2 = "`"$furMarkFullPath`" $( $params2 -join ' ' ) & pause"
-        Start-Process -FilePath "cmd.exe" -ArgumentList "/k", $inner1 | Out-Null
+
+        $cmdArgs1 = @(
+            "/k",
+            "echo Запуск FurMark для GPU 0...",
+            "&",
+            "`"$furMarkFullPath`" $($params1 -join ' ')",
+            "&",
+            "echo.",
+            "&",
+            "echo Тест FurMark завершен!",
+            "&",
+            "pause > nul"
+        )
+
+        $cmdArgs2 = @(
+            "/k",
+            "echo Запуск FurMark для GPU 1...",
+            "&",
+            "`"$furMarkFullPath`" $($params2 -join ' ')",
+            "&",
+            "echo.",
+            "&",
+            "echo Тест FurMark завершен!",
+            "&",
+            "pause > nul"
+        )
+
+        Write-Host "Запуск FurMark для GPU 0..."
+        Start-Process -FilePath "cmd.exe" -ArgumentList $cmdArgs1 -WindowStyle Normal
         Start-Sleep -Seconds 3
-        Start-Process -FilePath "cmd.exe" -ArgumentList "/k", $inner2 | Out-Null
+        Write-Host "Запуск FurMark для GPU 1..."
+        Start-Process -FilePath "cmd.exe" -ArgumentList $cmdArgs2 -WindowStyle Normal
     }
 }
 
-
+# ===================== ЗАПУСК FIO (с улучшениями) =====================
 function Start-FioTest {
     param([double]$hours, [string[]]$selectedDrives)
+
+    # Проверяем наличие FIO
+    if (-not (Test-Path $fioPath)) {
+        Write-Host "FIO не найден по пути: $fioPath"
+        Write-Host "Проверьте установку FIO в C:\Program Files\fio\"
+        return
+    }
+
     $seconds = [math]::Round($hours * 3600)
-    if (-not $selectedDrives) {
+
+    if (-not $selectedDrives -or $selectedDrives.Count -eq 0) {
         Write-Host "Диски для FIO не выбраны. Пропуск теста."
         return
     }
+
     foreach ($disk in $selectedDrives) {
         $testDir = "${disk}:\fio_tests"
         if (-not (Test-Path $testDir)) {
             New-Item -ItemType Directory -Path $testDir -Force | Out-Null
         }
+
         $testFile = "$testDir\fio_test_$([Guid]::NewGuid() ).dat"
         $configPath = "$env:TEMP\fio_config_$([Guid]::NewGuid() ).fio"
+
         $config = @"
 [global]
 ioengine=windowsaio
@@ -184,121 +248,204 @@ numjobs=14
 bs=896k
 rw=rw
 "@
-        if (-not (Test-Path $fioPath)) {
-            Write-Host "FIO не найден по пути: $fioPath"
-            continue
-        }
 
-        $inner = "`"$fioPath`" `"$configPath`" & pause"
-        Start-Process -FilePath "cmd.exe" -ArgumentList "/k", $inner | Out-Null
+        Set-Content -Path $configPath -Value $config
 
+        # УЛУЧШЕННАЯ КОМАНДА: запуск FIO с сохранением окна
+        $cmdArgs = @(
+            "/k",
+            "echo Запуск FIO теста для диска $disk",
+            "&",
+            "echo Пожалуйста, подождите...",
+            "&",
+            "`"$fioPath`" `"$configPath`"",
+            "&",
+            "echo.",
+            "&",
+            "echo =========================================",
+            "&",
+            "echo Тест FIO завершен!",
+            "&",
+            "echo Для закрытия окна нажмите любую клавишу...",
+            "&",
+            "pause > nul"
+        )
+
+        Write-Host "Запуск FIO для диска $disk..."
+        Start-Process -FilePath "cmd.exe" -ArgumentList $cmdArgs -WindowStyle Normal
+
+        Start-Sleep -Seconds 3
     }
 }
 
-function Generate-Report {
+# ===================== ОТЧЁТ AIDA64 (после завершения тестов) =====================
+function Generate-AidaReport {
     [CmdletBinding()]
     param(
         [string]$computerName,
-        [string]$desktopPath,
         [string]$aida64FullPath,
         [string]$outputFolder
     )
 
     if (-not $computerName) { $computerName = $env:COMPUTERNAME }
-
-    if (-not $desktopPath) {
-        $desktopPath = [Environment]::GetFolderPath("Desktop")
+    if (-not $outputFolder -or $outputFolder -eq "") {
+        $desktop = [Environment]::GetFolderPath("Desktop")
+        $outputFolder = Join-Path (Join-Path $desktop $computerName) "Reports"
     }
+    New-Item -ItemType Directory -Force -Path $outputFolder | Out-Null
 
-    # ✅ По умолчанию — как в старом коде: Desktop\Report\<PC>\SystemReport.html
-    if (-not $outputFolder) {
-        $reportDirectory = Join-Path -Path $desktopPath -ChildPath ("Report\{0}" -f $computerName)
-    } else {
-        # ✅ Если передали outputFolder (как делает main.py) — кладём туда, чтобы было "вместе с остальными"
-        $reportDirectory = $outputFolder
-    }
+    $reportPath = Join-Path $outputFolder "SystemReport.html"
 
-    if (-not (Test-Path $reportDirectory)) {
-        New-Item -ItemType Directory -Force -Path $reportDirectory | Out-Null
-    }
+    # Чтобы не было "программа уже запущена" — закрываем стресс-экземпляр AIDA64 перед отчётом
+    Close-ProcessByName -name "AIDA64Port" -waitSeconds 20
 
-    $ReportPath = Join-Path -Path $reportDirectory -ChildPath "SystemReport.html"
+    # Генерим отчёт и ЖДЁМ (так надёжнее)
+    Start-Process -FilePath $aida64FullPath -ArgumentList @(
+        "/R `"$reportPath`"",
+        "/ALL", "/SUM", "/HW", "/SW", "/AUDIT", "/HTML"
+    ) -Wait -NoNewWindow
 
-    try {
-        # ✅ Как раньше: в фоне, НЕ ждём завершения
-        Start-Process -FilePath $aida64FullPath -ArgumentList @(
-            "/R `"$ReportPath`"",
-            "/ALL", "/SUM", "/HW", "/SW", "/AUDIT", "/HTML"
-        ) -NoNewWindow
-
-        Write-Host "AIDA64: запущена генерация отчёта (в фоне): $ReportPath"
-        return $ReportPath
-    }
-    catch {
-        Write-Host "AIDA64: ошибка запуска отчёта: $_"
-        return $null
-    }
+    Write-Host "AIDA64: отчёт готов -> $reportPath"
+    return $reportPath
 }
 
 # ===================== ОЖИДАНИЕ ОТ СТАРТА AIDA =====================
-function Sleep-UntilAida {
+function Sleep-Until {
     param([int]$targetSec, [datetime]$start)
     $elapsed = [int]((Get-Date) - $start).TotalSeconds
     $remain = $targetSec - $elapsed
     if ($remain -gt 0) { Start-Sleep -Seconds $remain }
 }
 
-# ===================== ОСНОВНАЯ ЛОГИКА =====================
+# ===================== ОСНОВНАЯ ЛОГИКА (аргументы от GUI) =====================
 if ($args.Count -ge 2) {
 
     $tests = $args[0..($args.Count - 2)]
-    $hours = [double]$args[-1] / 60
-    $aidaSeconds = [int]($hours * 3600)
+    $durationMin = [double]$args[-1]
+    $hours = $durationMin / 60
+    $totalSeconds = [int][math]::Round($hours * 3600)
+
+    $gpuCount  = if ($tests -contains "GPU2") { 2 } else { 1 }
+    $fioDrives = @($tests | Where-Object { $_ -match '^[A-Z]$' })
+
+    $desktop = [Environment]::GetFolderPath("Desktop")
+    $pc = $env:COMPUTERNAME
+    $reportsDir = Join-Path (Join-Path $desktop $pc) "Reports"
 
     $aidaStart = $null
+    $aidaProcess = $null
+    $allProcesses = @()
 
+    # ===== ПОСЛЕДОВАТЕЛЬНЫЙ ЗАПУСК (как ты хочешь) =====
     if ($tests -contains "AIDA") {
         $aidaStart = Get-Date
-        Start-AidaTest -hours $hours -includeGPU (-not ($tests -contains "FURMARK"))
+        $includeGPU = -not ($tests -contains "FURMARK")
+        Write-Host "Запуск AIDA64..."
+
+        # Запускаем AIDA64 и сохраняем процесс
+        $aidaProcess = Start-AidaTest -hours $hours -includeGPU $includeGPU
+        Write-Host "AIDA64 запущена (PID: $($aidaProcess.Id))"
+        $allProcesses += $aidaProcess
         Start-Sleep -Seconds 120
     }
 
     if ($tests -contains "FURMARK") {
-        Start-FurMarkTest -hours $hours
+        Write-Host "Запуск FurMark..."
+        Start-FurMarkTest -hours $hours -gpuCount $gpuCount
         Start-Sleep -Seconds 60
     }
 
     if ($tests -contains "FIO") {
-        $drives = $tests | Where-Object { $_ -match '^[A-Z]$' }
-        Start-FioTest -hours $hours -selectedDrives $drives
+        Write-Host "Запуск FIO (диски: $($fioDrives -join ', '))..."
+        Start-FioTest -hours $hours -selectedDrives $fioDrives
         Start-Sleep -Seconds 45
     }
+    # ===== КОНЕЦ ПОСЛЕДОВАТЕЛЬНОГО ЗАПУСКА =====
 
+    # ----- AIDA: 2 скрина окна до конца теста -----
     if ($aidaStart) {
-        # T-10 минут
-        Sleep-UntilAida -targetSec ([math]::Max($aidaSeconds - 600, 60)) -start $aidaStart
-        Capture-Aida64Screenshot -isAutoScreen $true | Out-Null
+        # УПРОЩЕННАЯ ЛОГИКА:
+        # 1. Первый скрин за 2 минуты до конца (или за 30 секунд для коротких тестов)
+        # 2. Второй скрин за 15 секунд до конца
 
-        # T-1 минута
-        Sleep-UntilAida -targetSec ([math]::Max($aidaSeconds - 60, 60)) -start $aidaStart
-        Capture-Aida64Screenshot -isAutoScreen $false | Out-Null
+        $first_screen_delay = if ($totalSeconds -gt 300) { $totalSeconds - 120 } else { $totalSeconds - 30 }
+        if ($first_screen_delay -lt 10) { $first_screen_delay = 10 }
 
-        # Дожидаемся конца
-        Sleep-UntilAida -targetSec $aidaSeconds -start $aidaStart
+        Write-Host "Первый скрин AIDA через $first_screen_delay секунд"
+        Sleep-Until -targetSec $first_screen_delay -start $aidaStart
+        # Используем общий скриншотер вместо неработающей функции
+        Start-ScreenScript -arg "--autoscreen" -AidaOnly
+        Start-Sleep -Seconds 2
+
+        # Второй скрин за 15 секунд до конца
+        $second_screen_delay = $totalSeconds - 15
+        if ($second_screen_delay -lt 5) { $second_screen_delay = 5 }
+
+        Write-Host "Второй скрин AIDA через $second_screen_delay секунд"
+        Sleep-Until -targetSec $second_screen_delay -start $aidaStart
+        # Используем общий скриншотер вместо неработающей функции
+        Start-ScreenScript -arg "--screen" -AidaOnly
+        Start-Sleep -Seconds 2
+
+        # Дожидаемся конца таймера
+        Sleep-Until -targetSec $totalSeconds -start $aidaStart
+
+        # ЖДЁМ ЗАВЕРШЕНИЯ AIDA64
+        Write-Host "Ожидание завершения AIDA64..."
+        if ($aidaProcess) {
+            try {
+                $aidaProcess | Wait-Process -Timeout 30 -ErrorAction SilentlyContinue
+                Write-Host "AIDA64 завершена"
+
+                # СДЕЛАТЬ СКРИНШОТ AIDA64 СРАЗУ ПОСЛЕ ЗАВЕРШЕНИЯ
+                Write-Host "Делаем скриншот AIDA64 сразу после завершения..."
+                Start-ScreenScript -arg "--screen" -AidaOnly
+                Start-Sleep -Seconds 5
+
+            } catch {
+                Write-Host "AIDA64 не завершилась за 30 секунд, продолжаем"
+            }
+        }
+    } else {
+        # Если AIDA не запускалась — просто ждём общий таймер
+        Write-Host "Ожидание завершения теста ($totalSeconds секунд)..."
+        Start-Sleep -Seconds $totalSeconds
+
+        # После завершения AIDA64 сделай специальный скриншот
+        Write-Host "Делаем ФИНАЛЬНЫЙ скриншот AIDA64 перед закрытием..."
+        Start-ScreenScript -arg "--screen" -AidaOnly
+        Start-Sleep -Seconds 3
     }
 
+    # ----- ЖДЁМ ЗАВЕРШЕНИЯ ВСЕХ ПРОЦЕССОВ -----
+    Write-Host "Ожидание завершения всех тестов..."
+
+    # Ждём процессы AIDA64
+    if ($aidaProcess) {
+        try {
+            $aidaProcess | Wait-Process -Timeout 60 -ErrorAction SilentlyContinue
+            Write-Host "AIDA64 завершилась"
+        } catch {
+            Write-Host "AIDA64 ещё работает, продолжаем"
+        }
+    }
+
+    # Даём дополнительное время на завершение
+    Start-Sleep -Seconds 30
+
+    # ----- ФИНАЛ: общий скрин (тут должны попасть FIO/FurMark в состоянии "pause") -----
     Write-Host "Финальный общий скрин"
-    Start-ScreenScript
 
-    # ✅ Авто-отчёт AIDA ПОСЛЕ завершения тестов (как раньше)
-    $computerName = $env:COMPUTERNAME
-    $desktop = [Environment]::GetFolderPath("Desktop")
+    # ЖДЁМ чтобы окна точно появились
+    Write-Host "Ожидание появления финальных окон (10 секунд)..."
+    Start-Sleep -Seconds 10
 
-    # Если хочешь "как раньше" — оставь outputFolder пустым (уйдёт в Desktop\Report\<PC>)
-    # Если хочешь "вместе с остальными" — укажи Desktop\<PC>\Reports
-    $outputFolder = Join-Path (Join-Path $desktop $computerName) "Reports"
-
-    Generate-Report -computerName $computerName -desktopPath $desktop -aida64FullPath $aida64FullPath -outputFolder $outputFolder | Out-Null
+    # Делаем скрин несколько раз для надёжности
+    for ($i = 1; $i -le 3; $i++) {
+        Write-Host "Попытка скрина #$i"
+        Start-ScreenScript -arg "--screen" -AidaOnly
+        Start-Sleep -Seconds 5
+    }
 
     Write-Host "Тестирование завершено"
     exit
