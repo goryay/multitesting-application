@@ -467,6 +467,22 @@ def headless_resume(state: dict):
     rc = test_proc.wait()
     log_resume(f"[resume] pwsh finished rc={rc}")
 
+    # ===== ФИНАЛЬНЫЕ СКРИНЫ ПОСЛЕ RESUME (чтобы был FurMark/FIO) =====
+    try:
+        log_resume("[resume] final screens: waiting 10s before capture")
+        time.sleep(10)
+
+        cmd = build_screen_cmd("--screen")  # ВАЖНО: именно --screen, не --autoscreen
+        log_resume(f"[resume] final screens cmd={cmd}")
+
+        # несколько попыток, чтобы не промахнуться по появлению окон
+        for attempt in range(3):
+            r = subprocess.run(cmd, shell=False, cwd=workdir, check=False)
+            log_resume(f"[resume] final screen attempt {attempt + 1} rc={r.returncode}")
+            time.sleep(3)
+    except Exception as e:
+        log_resume(f"[resume] final screens failed: {e}")
+
     stop_flag.set()
     clear_state()
     log_resume("[resume] state cleared")
@@ -900,7 +916,7 @@ def run_gui():
                     archive_path = max(candidates, key=os.path.getmtime)
                     self.last_archive_path = archive_path
 
-                url = "http://10.0.6.39:3000/upload/reports"
+                url = "http://10.0.6.39:3000/reports/"
                 args = ["cmd", "/c", "curl", "-sS", "-f", "-F", f'file=@{archive_path}', url]
 
                 completed = subprocess.run(args, capture_output=True, text=True)
