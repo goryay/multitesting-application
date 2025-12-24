@@ -141,12 +141,229 @@ def install_dependencies_if_needed():
     ]
     if all(os.path.exists(p) for p in req):
         return
+
     script_path = resource_path("install_dependencies.ps1")
     if not os.path.exists(script_path):
         raise FileNotFoundError(f"Не найден скрипт установки: {script_path}")
+
+    # Реальная папка SoftForTest должна лежать рядом с exe (dist\SoftForTest),
+    # а не внутри временной _MEI... папки PyInstaller.
+    workdir = os.path.dirname(sys.executable) if is_frozen() else os.path.dirname(os.path.abspath(__file__))
+    # 1) При onefile PyInstaller папка лежит внутри _MEIPASS
+    candidates = [
+        resource_path("SoftForTest"),
+        os.path.join(workdir, "SoftForTest"),
+    ]
+    soft_root = next((p for p in candidates if os.path.isdir(p)), "")
+
+    if not soft_root:
+        raise FileNotFoundError(
+            "Папка SoftForTest не найдена рядом с main.exe.\n"
+            f"Ожидалось: {soft_root}\n\n"
+            "Проверь, что SoftForTest — это именно ПАПКА (распакованная), а не 'Сжатая архивная папка' (zip)."
+        )
+
     env = os.environ.copy()
     env["PATH"] = r"C:\Program Files\PowerShell\7;" + env.get("PATH", "")
-    subprocess.run(["powershell.exe", "-ExecutionPolicy", "Bypass", "-File", script_path], check=True, env=env)
+
+    # Запускаем установку и в случае ошибки показываем вывод скрипта
+    cp = subprocess.run(
+        [
+            "powershell.exe",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            script_path,
+            "-SoftRoot",
+            soft_root,
+        ],
+        cwd=workdir,
+        env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="ignore",
+    )
+    if cp.returncode != 0:
+        out_tail = (cp.stdout or "")[-2000:]
+        err_tail = (cp.stderr or "")[-2000:]
+        raise RuntimeError(
+            "install_dependencies.ps1 завершился с ошибкой.\n"
+            f"rc={cp.returncode}\n\n"
+            f"STDOUT:\n{out_tail}\n\n"
+            f"STDERR:\n{err_tail}"
+        )
+
+
+# ================= helpers: PowerShell / reports (headless-safe) =================
+def get_pwsh_exe() -> str:
+    """Prefer PowerShell 7 if installed, otherwise fallback to Windows PowerShell."""
+    pwsh = r"C:\Program Files\PowerShell\7\pwsh.exe"
+    return pwsh if os.path.exists(pwsh) else "powershell.exe"
+
+
+def _ps_env() -> dict:
+    env = os.environ.copy()
+    # Add PS7 folder to PATH (harmless if not installed)
+    env["PATH"] = r"C:\Program Files\PowerShell\7;" + env.get("PATH", "")
+    return env
+
+
+def kill_processes_by_name(names: list[str]):
+    """Best-effort: kill processes if they exist (no exception if not)."""
+    for n in names:
+        try:
+            subprocess.run(
+                ["taskkill", "/F", "/IM", n],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
+        except Exception:
+            pass
+
+
+def generate_reports_headless(workdir: str):
+    """
+    Генерация отчётов БЕЗ GUI (важно для режима автоперезапуска/--autorun).
+    Делает:
+      1) Generate_SoftwareReport.ps1
+      2) AIDA64 HTML через функцию Generate-AidaReport из aida_fio_furmark.ps1
+      3) SMART (smart.ps1)
+    """
+    try:
+        install_dependencies_if_needed()
+    except Exception as e:
+        log_resume(f"[headless][report] deps fail: {e}")
+        return
+
+    computer_name = os.environ.get("COMPUTERNAME", "Unknown")
+    desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
+    base_dir = os.path.join(desktop_path, computer_name)
+    reports_dir = os.path.join(base_dir, "Reports")
+    screens_dir = os.path.join(base_dir, "Screens")
+    os.makedirs(reports_dir, exist_ok=True)
+    os.makedirs(screens_dir, exist_ok=True)
+
+    # Важно: SoftForTest должен браться из ПАПКИ РЯДОМ С EXE (workdir), а не из _MEI...
+    aida_exe = os.path.join(workdir, "SoftForTest", "AIDA64", "AIDA64Port.exe")
+
+    html_report = resource_path("Generate_SoftwareReport.ps1")
+    script_path = resource_path("aida_fio_furmark.ps1")
+    smart_script = resource_path("smart.ps1")
+
+    pwsh = get_pwsh_exe()
+    env = _ps_env()
+
+    log_resume(f"[headless][report] start -> {reports_dir}")
+    log_resume(f"[headless][report] pwsh={pwsh}")
+    log_resume(f"[headless][report] aida_exe={aida_exe} exists={os.path.exists(aida_exe)}")
+
+    # На практике AIDA может быть ещё открыта (окно/лаунчер) и блокирует запуск отчёта.
+    kill_processes_by_name([
+        "AIDA64.exe",
+        "AIDA64Port.exe",
+        "AIDA64BusinessPortableLauncher.exe",
+        "AIDA64BusinessPortable.exe",
+    ])
+    time.sleep(2)
+
+    # 1) Программный отчёт
+    try:
+        r1 = subprocess.run(
+            [
+                pwsh, "-NoProfile", "-ExecutionPolicy", "Bypass",
+                "-File", html_report,
+                "-ComputerName", computer_name,
+                "-OutputFolder", reports_dir,
+                "-IncludeSoftware",
+            ],
+            capture_output=True,
+            text=True,
+            env=env,
+            cwd=workdir,
+        )
+        log_resume(f"[headless][report] software rc={r1.returncode}")
+        if r1.stdout:
+            log_resume(f"[headless][report] software stdout tail: {r1.stdout[-800:]}")
+        if r1.stderr:
+            log_resume(f"[headless][report] software stderr tail: {r1.stderr[-800:]}")
+        if r1.returncode != 0:
+            return
+    except Exception as e:
+        log_resume(f"[headless][report] software exception: {e}")
+        return
+
+    # 2) AIDA64 HTML
+    try:
+        ps_aida = (
+            f". '{script_path}'; "
+            f"Generate-AidaReport -computerName '{computer_name}' "
+            f"-outputFolder '{reports_dir}' "
+            f"-aida64FullPath '{aida_exe}'"
+        )
+        r2 = subprocess.run(
+            [pwsh, "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_aida],
+            capture_output=True,
+            text=True,
+            env=env,
+            cwd=workdir,
+        )
+        log_resume(f"[headless][report] aida rc={r2.returncode}")
+        if r2.stdout:
+            log_resume(f"[headless][report] aida stdout tail: {r2.stdout[-800:]}")
+        if r2.stderr:
+            log_resume(f"[headless][report] aida stderr tail: {r2.stderr[-800:]}")
+        if r2.returncode != 0:
+            return
+    except Exception as e:
+        log_resume(f"[headless][report] aida exception: {e}")
+        return
+
+    # 3) SMART
+    try:
+        smart_output = os.path.join(reports_dir, f"smart_{datetime.now():%Y-%m-%d_%H-%M-%S}.txt")
+        r3 = subprocess.run(
+            [pwsh, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", smart_script, smart_output],
+            capture_output=True,
+            text=True,
+            env=env,
+            cwd=workdir,
+        )
+        log_resume(f"[headless][report] smart rc={r3.returncode}")
+        if r3.stdout:
+            log_resume(f"[headless][report] smart stdout tail: {r3.stdout[-800:]}")
+        if r3.stderr:
+            log_resume(f"[headless][report] smart stderr tail: {r3.stderr[-800:]}")
+    except Exception as e:
+        log_resume(f"[headless][report] smart exception: {e}")
+        return
+
+    log_resume("[headless][report] DONE OK")
+
+
+
+def archive_results_headless(workdir: str):
+    """Создать ZIP-архив папки Desktop\<COMPUTERNAME> без GUI."""
+    try:
+        computer_name = os.environ.get("COMPUTERNAME", "Unknown")
+        desktop = os.path.join(os.path.expanduser("~"), "Desktop")
+        base_dir = os.path.join(desktop, computer_name)
+
+        if not os.path.isdir(base_dir):
+            log_resume(f"[headless][archive] base_dir not found: {base_dir}")
+            return
+
+        ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        archive_base = os.path.join(desktop, f"{computer_name}_{ts}")
+        log_resume(f"[headless][archive] start -> {archive_base}.zip")
+
+        shutil.make_archive(archive_base, "zip", root_dir=desktop, base_dir=computer_name)
+
+        log_resume(f"[headless][archive] DONE OK: {archive_base}.zip")
+    except Exception as e:
+        log_resume(f"[headless][archive] fail: {e}")
 
 
 # =============== автозапуск (HKCU\Run) ===============
@@ -482,6 +699,12 @@ def headless_resume(state: dict):
             time.sleep(3)
     except Exception as e:
         log_resume(f"[resume] final screens failed: {e}")
+
+    try:
+        generate_reports_headless(workdir)
+        archive_results_headless(workdir)
+    except Exception as e:
+        log_resume(f"[resume] headless reports fail: {e}")
 
     stop_flag.set()
     clear_state()
@@ -916,7 +1139,7 @@ def run_gui():
                     archive_path = max(candidates, key=os.path.getmtime)
                     self.last_archive_path = archive_path
 
-                url = "http://10.0.6.39:3000/reports/"
+                url = "http://10.0.6.39:3000/reports"
                 args = ["cmd", "/c", "curl", "-sS", "-f", "-F", f'file=@{archive_path}', url]
 
                 completed = subprocess.run(args, capture_output=True, text=True)
