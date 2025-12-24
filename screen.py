@@ -1,4 +1,6 @@
 import os
+import json
+import hashlib
 import time
 import win32gui
 import win32con
@@ -38,6 +40,46 @@ def get_report_directory():
     os.makedirs(screens_dir, exist_ok=True)
     return screens_dir
 
+
+# ===================== DEDUP CACHE (против дублей скринов) =====================
+DEDUP_CACHE_FILENAME = ".screens_dedup_cache.json"
+# Если скрипт вызывается несколько раз подряд (после ребута/повторных попыток),
+# одинаковые кадры не будем сохранять повторно.
+DEDUP_TTL_SECONDS = 60 * 60  # 1 час
+
+def _dedup_cache_path(folder: str) -> str:
+    return os.path.join(folder, DEDUP_CACHE_FILENAME)
+
+def _load_dedup_cache(folder: str) -> dict:
+    try:
+        p = _dedup_cache_path(folder)
+        if os.path.exists(p):
+            with open(p, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return data if isinstance(data, dict) else {}
+    except Exception:
+        pass
+    return {}
+
+def _save_dedup_cache(folder: str, cache: dict) -> None:
+    try:
+        p = _dedup_cache_path(folder)
+        tmp = p + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(cache, f, ensure_ascii=False)
+        os.replace(tmp, p)
+    except Exception:
+        pass
+
+def _hash_image(img) -> str:
+    # PIL.Image -> hash (без метаданных, только пиксели)
+    try:
+        rgb = img.convert("RGB")
+        data = rgb.tobytes()
+        return hashlib.sha1(data).hexdigest()
+    except Exception:
+        # fallback: используем repr-байты (хуже, но лучше чем ничего)
+        return hashlib.sha1(repr(img).encode("utf-8", errors="ignore")).hexdigest()
 
 def get_console_content(hwnd):
     """Пытается получить текст из консольного окна."""
@@ -211,12 +253,35 @@ def safe_capture(hwnd, folder, autoscreen: bool = False, aida_only: bool = False
         suffix = "auto" if autoscreen else "end"
         timestamp = int(time.time())
         filename = f"{safe_title}_{suffix}_{timestamp}.png"
+
         path = os.path.join(folder, filename)
+
+        # ---- DEDUP: не плодим одинаковые скрины (особенно после ребута/повторных попыток) ----
+        try:
+            dedup_key = f"{safe_title}|{suffix}|{title.lower()[:120]}"
+            dedup_hash = _hash_image(img)
+            cache = _load_dedup_cache(folder)
+            prev = cache.get(dedup_key)
+            now_ts = time.time()
+            if prev and prev.get("hash") == dedup_hash and (now_ts - float(prev.get("ts", 0))) < DEDUP_TTL_SECONDS:
+                print(f"[SKIP] Дубликат скрина пропущен: {safe_title}_{suffix}")
+                return
+        except Exception:
+            cache = None
+            now_ts = None
+            dedup_key = None
+            dedup_hash = None
 
         # Сохраняем
         img.save(path)
-        print(f"[SUCCESS] Скрин сохранён: {filename} ({width}x{height})")
+        try:
+            if cache is not None and dedup_key is not None and dedup_hash is not None and now_ts is not None:
+                cache[dedup_key] = {"hash": dedup_hash, "ts": now_ts, "file": filename}
+                _save_dedup_cache(folder, cache)
+        except Exception:
+            pass
 
+        print(f"[SUCCESS] Скрин сохранён: {filename}")
     except Exception as e:
         print(f"[ERROR] Ошибка при создании скриншота: {e}")
         import traceback
