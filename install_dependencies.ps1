@@ -1,9 +1,25 @@
-# install_dependencies.ps1
-$ErrorActionPreference = "Stop"
-
 param(
     [string]$SoftRoot = ""
 )
+
+# install_dependencies.ps1
+$ErrorActionPreference = "Stop"
+
+function Test-IsAdmin {
+    try {
+        $id = [Security.Principal.WindowsIdentity]::GetCurrent()
+        $p  = New-Object Security.Principal.WindowsPrincipal($id)
+        return $p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    } catch { return $false }
+}
+
+# Требуются права админа (установка в Program Files). Если не админ — перезапускаем себя с UAC.
+if (-not (Test-IsAdmin)) {
+    Write-Host "[deps] Требуются права администратора. Запрашиваю UAC..." -ForegroundColor Yellow
+    $args = @("-NoProfile","-ExecutionPolicy","Bypass","-File",$PSCommandPath,"-SoftRoot",$SoftRoot)
+    $p = Start-Process -FilePath "powershell.exe" -ArgumentList $args -Verb RunAs -Wait -PassThru
+    exit $p.ExitCode
+}
 
 # 1) Если SoftRoot не передали — пробуем рядом со скриптом
 if ([string]::IsNullOrWhiteSpace($SoftRoot)) {
@@ -26,6 +42,19 @@ if (-not (Test-Path $SoftRoot)) {
     exit 1
 }
 
+
+# 3) SoftRoot должен быть папкой, а не ZIP/файл
+try {
+    $it = Get-Item -LiteralPath $SoftRoot -ErrorAction Stop
+    if (-not $it.PSIsContainer) {
+        throw "SoftRoot указывает НЕ на папку: $SoftRoot`nПроверь, что SoftForTest распакован (не 'Сжатая архивная папка')."
+    }
+} catch {
+    throw "Не удалось открыть SoftRoot: $SoftRoot`n$($_.Exception.Message)"
+}
+
+Write-Host "[deps] SoftRoot: $SoftRoot"
+
 function Get-InstallerFile {
     param(
         [string]$Description,
@@ -42,7 +71,7 @@ function Get-InstallerFile {
     }
 
     # Берём самый маленький по размеру (обычно это тот самый)
-    return $files | Sort-Object Length | Select-Object -First 1
+    return $files | Sort-Object LastWriteTime -Descending | Select-Object -First 1
 }
 
 function Install-PowerShell7 {
