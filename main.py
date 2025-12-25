@@ -345,7 +345,7 @@ def generate_reports_headless(workdir: str):
 
 
 def archive_results_headless(workdir: str):
-    """Создать ZIP-архив папки Desktop\<COMPUTERNAME> без GUI."""
+    """Создать ZIP-архив папки Desktop\\<COMPUTERNAME> без GUI."""
     try:
         computer_name = os.environ.get("COMPUTERNAME", "Unknown")
         desktop = os.path.join(os.path.expanduser("~"), "Desktop")
@@ -1139,7 +1139,7 @@ def run_gui():
                     archive_path = max(candidates, key=os.path.getmtime)
                     self.last_archive_path = archive_path
 
-                url = "http://10.0.6.39:3000/reports"
+                url = "http://10.0.6.41:3000/ulrep"
                 args = ["cmd", "/c", "curl", "-sS", "-f", "-F", f'file=@{archive_path}', url]
 
                 completed = subprocess.run(args, capture_output=True, text=True)
