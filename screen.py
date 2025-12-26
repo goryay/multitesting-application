@@ -15,6 +15,21 @@ MIN_WIDTH = 300
 MIN_HEIGHT = 200
 
 
+
+def is_aida_window(title_lower: str, proc_name: str = "") -> bool:
+    """Определение окна AIDA64 по заголовку и (опционально) по процессу.
+    ВАЖНО: не делаем проверку заголовка зависимой от имени процесса, потому что
+    portable/launcher варианты могут иметь другое имя exe.
+    """
+    if not title_lower:
+        return False
+    if ("system stability test" in title_lower) or title_lower.startswith("aida64") or ("aida64 business" in title_lower):
+        return True
+    # fallback по процессу (если заголовок не типовой)
+    pn = (proc_name or "").lower()
+    return pn in ("aida64port.exe", "aida64.exe", "aida64businessportablelauncher.exe")
+
+
 def get_window_process_name(hwnd) -> str:
     """Пытаемся определить имя процесса (exe), которому принадлежит окно."""
     try:
@@ -116,42 +131,20 @@ def safe_capture(hwnd, folder, autoscreen: bool = False, aida_only: bool = False
 
     # Режим ТОЛЬКО AIDA64
     if aida_only:
-        is_aida = False
+        # Режим ТОЛЬКО AIDA64
         proc_name = get_window_process_name(hwnd)
-
-        if proc_name:
-            is_aida_proc = proc_name in ("aida64port.exe", "aida64.exe")
-            if is_aida_proc:
-                is_aida = ("system stability test" in title_lower) or ("aida64" in title_lower)
-        else:
-            is_aida = (
-                    ("system stability test" in title_lower) or
-                    title_lower.startswith("aida64") or
-                    "aida64 business" in title_lower
-            )
-
-        if not is_aida:
+        if not is_aida_window(title_lower, proc_name):
             return  # В режиме aida_only только AIDA64
+  # В режиме aida_only только AIDA64
 
     else:
         # 1. Для автоскринов (во время теста) - только AIDA64
         if autoscreen:
-            is_aida = False
+            # Во время автоскрина - только AIDA64
             proc_name = get_window_process_name(hwnd)
-
-            if proc_name:
-                is_aida_proc = proc_name in ("aida64port.exe", "aida64.exe")
-                if is_aida_proc:
-                    is_aida = ("system stability test" in title_lower) or ("aida64" in title_lower)
-            else:
-                is_aida = (
-                        ("system stability test" in title_lower) or
-                        title_lower.startswith("aida64") or
-                        "aida64 business" in title_lower
-                )
-
-            if not is_aida:
+            if not is_aida_window(title_lower, proc_name):
                 return  # Во время автоскрина только AIDA64
+
 
         # 2. Для финальных скринов (когда тесты завершены) - ВСЕ CMD окна
         else:
@@ -161,19 +154,8 @@ def safe_capture(hwnd, folder, autoscreen: bool = False, aida_only: bool = False
                              "windows terminal" in title_lower)
 
             # Также захватываем AIDA64 и FurMark
-            is_aida = False
             proc_name = get_window_process_name(hwnd)
-
-            if proc_name:
-                is_aida_proc = proc_name in ("aida64port.exe", "aida64.exe")
-                if is_aida_proc:
-                    is_aida = ("system stability test" in title_lower) or ("aida64" in title_lower)
-            else:
-                is_aida = (
-                        ("system stability test" in title_lower) or
-                        title_lower.startswith("aida64") or
-                        "aida64 business" in title_lower
-                )
+            is_aida = is_aida_window(title_lower, proc_name)
 
             is_furmark = "furmark" in title_lower
 
