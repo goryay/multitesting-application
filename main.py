@@ -1139,10 +1139,16 @@ def run_gui():
                     archive_path = max(candidates, key=os.path.getmtime)
                     self.last_archive_path = archive_path
 
-                url = "http://10.0.6.41:3000/ulrep"
-                args = ["cmd", "/c", "curl", "-sS", "-f", "-F", f'file=@{archive_path}', url]
+                url = "http://10.0.6.41:3000/ulrep".strip()
+                form_arg = f'file=@"{archive_path}"'  # важно: @ и кавычки для путей с пробелами
 
-                completed = subprocess.run(args, capture_output=True, text=True)
+                completed = subprocess.run(
+                    ["curl.exe", "-sS", "-f", "-F", form_arg, url],
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="ignore"
+                )
 
                 if completed.returncode == 0:
                     msg = completed.stdout.strip() or "Файл успешно загружен."
